@@ -107,7 +107,7 @@ export default function NhapKhoTheoGoi() {
   ];
 
   const [receipts, setReceipts] = useState<Receipt[]>([]);
-  const [view, setView] = useState<"list" | "create-theo-po" | "create-tu-do" | "edit" | "detail">(
+  const [view, setView] = useState<"list" | "create-theo-po" | "create-tu-do" | "detail">(
     "list"
   );
   const [hinhThucNhap, setHinhThucNhap] = useState<"theo-po" | "tu-do">("theo-po");
@@ -352,8 +352,8 @@ export default function NhapKhoTheoGoi() {
 
   return (
     <>
-      <PageMeta title="Nhập Kho" />
-      <PageBreadcrumb pageName="Nhập Kho" />
+      <PageMeta title="Nhập Kho" description="Quản lý nhập kho theo gói" />
+      <PageBreadcrumb pageTitle="Nhập Kho" />
 
       {view === "list" && (
         <div className="space-y-4">
@@ -598,6 +598,7 @@ export default function NhapKhoTheoGoi() {
               </div>
             )}
           </ComponentCard>
+        </div>
       )}
 
       {view === "create-theo-po" && (

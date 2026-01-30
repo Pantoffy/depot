@@ -30,7 +30,6 @@ interface Supplier {
 
 export default function QuanLyNhaCungCap() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [loading, setLoading] = useState(true);
 
   // Fetch suppliers from API
   useEffect(() => {
@@ -39,7 +38,7 @@ export default function QuanLyNhaCungCap() {
 const fetchSuppliers = async () => {
   try {
     const response = await axios.get(
-      "https://127.0.0.1:7160/WeatherForecast",
+      "https://localhost:44391/WeatherForecast",
       {
         headers: {
           "Content-Type": "application/json",
@@ -71,8 +70,6 @@ const fetchSuppliers = async () => {
 
     console.error("Error fetching suppliers:", error);
     showToast(`Lỗi: ${errorMsg}`, "error");
-  } finally {
-    setLoading(false);
   }
 };
 
@@ -223,8 +220,8 @@ const fetchSuppliers = async () => {
 
   return (
     <>
-      <PageMeta title="Quản Lý Nhà Cung Cấp" />
-      <PageBreadcrumb pageName="Quản Lý Nhà Cung Cấp" />
+      <PageMeta title="Quản Lý Nhà Cung Cấp" description="Quản lý danh sách nhà cung cấp" />
+      <PageBreadcrumb pageTitle="Quản Lý Nhà Cung Cấp" />
 
       {view === "list" && (
         <div className="space-y-4">
@@ -323,7 +320,7 @@ const fetchSuppliers = async () => {
                             color={
                               supplier.trangThai === "Hoạt động"
                                 ? "success"
-                                : "danger"
+                                : "error"
                             }
                           >
                             {supplier.trangThai}

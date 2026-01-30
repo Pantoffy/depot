@@ -305,7 +305,7 @@ export default function DonDatHang() {
   return (
     <>
       <PageMeta title="Đơn Đặt Hàng" />
-      <PageBreadcrumb pageName="Đơn Đặt Hàng" />
+      <PageBreadcrumb pageTitle="Đơn Đặt Hàng" />
 
       {view === "list" && (
         <div className="space-y-4">

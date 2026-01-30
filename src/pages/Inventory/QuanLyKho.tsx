@@ -180,7 +180,7 @@ export default function QuanLyKho() {
   return (
     <>
       <PageMeta title="Quản Lý Kho" />
-      <PageBreadcrumb pageName="Quản Lý Kho" />
+      <PageBreadcrumb pageTitle="Quản Lý Kho" />
 
       {view === "list" && (
         <div className="space-y-4">
