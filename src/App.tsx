@@ -22,8 +22,8 @@ import Home from "./pages/Dashboard/Home";
 import NhapKho from "./pages/Forms/NhapKho";
 import DonDatHang from "./pages/Forms/DonDatHang";
 import XuatKho from "./pages/Forms/XuatKho";
-import QuanLyNguyenLieu from "./pages/Inventory/QuanLyNguyenLieu";
-import QuanLyNhaCungCap from "./pages/Inventory/QuanLyNhaCungCap";
+import Materials from "./pages/Inventory/Materials";
+import Suppliers from "./pages/Inventory/Suppliers";
 import QuanLyKho from "./pages/Inventory/QuanLyKho";
 
 export default function App() {
@@ -49,8 +49,8 @@ export default function App() {
             <Route path="/don-dat-hang" element={<DonDatHang />} />
 
             {/* Inventory Management */}
-            <Route path="/quan-ly-nguyen-lieu" element={<QuanLyNguyenLieu />} />
-            <Route path="/quan-ly-nha-cung-cap" element={<QuanLyNhaCungCap />} />
+            <Route path="/quan-ly-nguyen-lieu" element={<Materials />} />
+            <Route path="/quan-ly-nha-cung-cap" element={<Suppliers />} />
             <Route path="/quan-ly-kho" element={<QuanLyKho />} />
 
             {/* Tables */}

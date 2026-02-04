@@ -1,166 +1,137 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
-
-interface Supplier {
-  id: string;
-  tenNCC: string;
-  diaChiNCC: string;
-  sdtNCC: string;
-  emailNCC: string;
-  nguoiLienHe: string;
-  dieuKienThanhToan: string;
-  moTa: string;
-  ngayTao: string;
-  trangThai: "Hoạt động" | "Vô hiệu hóa";
-}
+import { supplierService, Supplier } from "../../services/supplierService";
 
 // Dropdown Action Component
 const ActionDropdown = ({ 
-  supplier, 
   onView, 
   onEdit, 
-  onDelete 
+  onDelete,
+  onToggleStatus
 }: { 
-  supplier: Supplier; 
   onView: () => void; 
   onEdit: () => void; 
-  onDelete: () => void; 
+  onDelete: () => void;
+  onToggleStatus: () => void;
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="flex gap-2">
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+        onClick={onView}
+        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+        title="Xem chi tiết"
       >
-        <svg className="w-5 h-5 text-gray-500 dark:text-gray-400" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
+        <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
         </svg>
       </button>
-      
-      {isOpen && (
-        <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
-          <button
-            onClick={() => { onView(); setIsOpen(false); }}
-            className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-          >
-            <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-            Xem chi tiết
-          </button>
-          <button
-            onClick={() => { onEdit(); setIsOpen(false); }}
-            className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-          >
-            <svg className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-            Chỉnh sửa
-          </button>
-          <button
-            onClick={() => { onDelete(); setIsOpen(false); }}
-            className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-            Xóa
-          </button>
-        </div>
-      )}
+      <button
+        onClick={onEdit}
+        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+        title="Chỉnh sửa"
+      >
+        <svg className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+        </svg>
+      </button>
+      <button
+        onClick={onToggleStatus}
+        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+        title="Ngừng hợp tác"
+      >
+        <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />
+        </svg>
+      </button>
+      <button
+        onClick={onDelete}
+        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+        title="Xóa"
+      >
+        <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+      </button>
     </div>
   );
 };
 
-export default function QuanLyNhaCungCap() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>([
-    {
-      id: "1",
-      tenNCC: "Công ty TNHH ABC",
-      diaChiNCC: "123 Đường Lê Lợi, TP HCM",
-      sdtNCC: "0287654321",
-      emailNCC: "contact@abc.com.vn",
-      nguoiLienHe: "Nguyễn Văn A",
-      dieuKienThanhToan: "Thanh toán 30 ngày",
-      moTa: "Cung cấp bột mỳ và lương khô",
-      ngayTao: "2025-01-10",
-      trangThai: "Hoạt động",
-    },
-    {
-      id: "2",
-      tenNCC: "Công ty XYZ",
-      diaChiNCC: "456 Đường Huyền Trân Côn Công, Quận 1, TP HCM",
-      sdtNCC: "0298765432",
-      emailNCC: "sales@xyz.vn",
-      nguoiLienHe: "Trần Thị B",
-      dieuKienThanhToan: "Thanh toán 15 ngày",
-      moTa: "Cung cấp các nguyên liệu tươi",
-      ngayTao: "2025-01-15",
-      trangThai: "Hoạt động",
-    },
-    {
-      id: "3",
-      tenNCC: "Metro Cash & Carry",
-      diaChiNCC: "789 Đường Võ Văn Kiệt, Quận 5, TP HCM",
-      sdtNCC: "0278901234",
-      emailNCC: "procurement@metro.vn",
-      nguoiLienHe: "Lê Văn C",
-      dieuKienThanhToan: "Thanh toán ngay",
-      moTa: "Cung cấp các mặt hàng buôn bán",
-      ngayTao: "2025-01-20",
-      trangThai: "Hoạt động",
-    },
-  ]);
+export default function Suppliers() {
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [view, setView] = useState<"list" | "create" | "edit" | "detail">("list");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
-  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [selectedItems, setSelectedItems] = useState<number[]>([]);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [filters, setFilters] = useState<{ trangThai: string[] }>({
-    trangThai: [],
+  const [filters, setFilters] = useState<{ status: string[] }>({
+    status: [],
   });
   const [formData, setFormData] = useState({
-    tenNCC: "",
-    diaChiNCC: "",
-    sdtNCC: "",
-    emailNCC: "",
-    nguoiLienHe: "",
-    dieuKienThanhToan: "",
-    moTa: "",
+    code: "",
+    type: "",
+    name: "",
+    contactPerson: "",
+    title: "",
+    phone: "",
+    email: "",
+    role: "",
+    citizenId: "",
+    address: "",
+    status: "Hoạt động",
   });
 
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
+  // Fetch suppliers on component mount
+  useEffect(() => {
+    fetchSuppliers();
+  }, []);
+
+  const fetchSuppliers = async () => {
+    try {
+      setLoading(true);
+      const data = await supplierService.getAllSuppliers();
+      console.log("Suppliers data:", data);
+      data.forEach((s) => console.log(`Supplier ${s.name}: status = "${s.status}" (type: ${typeof s.status})`));
+      setSuppliers(data);
+      showToast("Tải dữ liệu thành công!", "success");
+    } catch (error: any) {
+      let errorMsg = "Unknown error";
+      
+      if (error.response) {
+        errorMsg = `API Error: ${error.response.status} - ${error.response.statusText}`;
+        console.error("Response data:", error.response.data);
+      } else if (error.request) {
+        errorMsg = "Không thể kết nối tới server (CORS / SSL / Server chưa chạy)";
+      } else {
+        errorMsg = error.message;
+      }
+      
+      console.error("Error fetching suppliers:", error);
+      showToast(`Lỗi: ${errorMsg}`, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSelectAll = () => {
     if (selectedItems.length === paginatedSuppliers.length) {
       setSelectedItems([]);
     } else {
-      setSelectedItems(paginatedSuppliers.map(s => s.id));
+      setSelectedItems(paginatedSuppliers.filter(s => s.id !== undefined).map(s => s.id!));
     }
   };
 
-  const handleSelectItem = (id: string) => {
+  const handleSelectItem = (id: number) => {
     setSelectedItems(prev => 
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
     );
@@ -168,14 +139,19 @@ export default function QuanLyNhaCungCap() {
 
   const resetForm = () => {
     setFormData({
-      tenNCC: "",
-      diaChiNCC: "",
-      sdtNCC: "",
-      emailNCC: "",
-      nguoiLienHe: "",
-      dieuKienThanhToan: "",
-      moTa: "",
+      code: "",
+      type: "",
+      name: "",
+      contactPerson: "",
+      title: "",
+      phone: "",
+      email: "",
+      role: "",
+      citizenId: "",
+      address: "",
+      status: "Hoạt động",
     });
+    setSelectedSupplier(null);
   };
 
   const handleFormChange = (
@@ -188,59 +164,98 @@ export default function QuanLyNhaCungCap() {
     }));
   };
 
-  const handleSaveSupplier = () => {
-    if (!formData.tenNCC || !formData.sdtNCC) {
-      showToast("Vui lòng điền đầy đủ thông tin!", "warning");
+  const handleSaveSupplier = async () => {
+    if (!formData.code || !formData.type) {
+      showToast("Vui lòng điền đầy đủ thông tin (Code và Type)!", "warning");
       return;
     }
 
-    if (view === "create") {
-      const newSupplier: Supplier = {
-        id: Date.now().toString(),
-        tenNCC: formData.tenNCC,
-        diaChiNCC: formData.diaChiNCC,
-        sdtNCC: formData.sdtNCC,
-        emailNCC: formData.emailNCC,
-        nguoiLienHe: formData.nguoiLienHe,
-        dieuKienThanhToan: formData.dieuKienThanhToan,
-        moTa: formData.moTa,
-        ngayTao: new Date().toISOString().split("T")[0],
-        trangThai: "Hoạt động",
-      };
-      setSuppliers([...suppliers, newSupplier]);
-      showToast("Nhà cung cấp đã được tạo thành công!", "success");
-    } else if (view === "edit" && selectedSupplier) {
-      setSuppliers(
-        suppliers.map((s) =>
-          s.id === selectedSupplier.id
-            ? {
-                ...s,
-                tenNCC: formData.tenNCC,
-                diaChiNCC: formData.diaChiNCC,
-                sdtNCC: formData.sdtNCC,
-                emailNCC: formData.emailNCC,
-                nguoiLienHe: formData.nguoiLienHe,
-                dieuKienThanhToan: formData.dieuKienThanhToan,
-                moTa: formData.moTa,
-              }
-            : s
-        )
-      );
-      showToast("Nhà cung cấp đã được cập nhật!", "success");
+    try {
+      if (view === "create") {
+        const result = await supplierService.createSupplier(formData);
+        setSuppliers([...suppliers, result]);
+        showToast("Nhà cung cấp đã được tạo thành công!", "success");
+      } else if (view === "edit" && selectedSupplier?.id) {
+        const result = await supplierService.updateSupplier(
+          selectedSupplier.id,
+          formData
+        );
+        setSuppliers(
+          suppliers.map((s) => (s.id === selectedSupplier.id ? result : s))
+        );
+        showToast("Nhà cung cấp đã được cập nhật!", "success");
+      }
+      resetForm();
+      setView("list");
+    } catch (error) {
+      console.error(error);
+      showToast("Lỗi khi lưu nhà cung cấp!", "error");
     }
-
-    resetForm();
-    setView("list");
   };
 
-  const handleDeleteSupplier = (id: string) => {
+  const handleDeleteSupplier = (supplierId: number) => {
     showConfirm({
       message: "Bạn có chắc chắn muốn xóa nhà cung cấp này?",
       okText: "Xóa",
       cancelText: "Hủy",
-      onConfirm: () => {
-        setSuppliers(suppliers.filter((s) => s.id !== id));
-        showToast("Nhà cung cấp đã được xóa!", "success");
+      onConfirm: async () => {
+        try {
+          console.log("Deleting supplier ID:", supplierId);
+          await supplierService.deleteSupplier(supplierId);
+          setSuppliers(suppliers.filter((s) => s.id !== supplierId));
+          showToast("Nhà cung cấp đã được xóa!", "success");
+        } catch (error: any) {
+          console.error("Delete error:", error);
+          let errorMsg = "Lỗi khi xóa nhà cung cấp!";
+          
+          if (error.response) {
+            errorMsg = `API Error: ${error.response.status} - ${error.response.statusText}`;
+            console.error("Response data:", error.response.data);
+          } else if (error.request) {
+            errorMsg = "Không thể kết nối tới server";
+          }
+          
+          showToast(errorMsg, "error");
+        }
+      },
+    });
+  };
+
+  const handleToggleStatus = (supplier: Supplier) => {
+    const newStatus = supplier.status === "Hoạt động" ? "Ngừng hợp tác" : "Hoạt động";
+    showConfirm({
+      message: `Bạn có chắc chắn muốn đổi trạng thái thành "${newStatus}"?`,
+      okText: "Xác nhận",
+      cancelText: "Hủy",
+      onConfirm: async () => {
+        try {
+          if (!supplier.id) return;
+          const updatedData = { ...supplier, status: newStatus };
+          await supplierService.updateSupplier(supplier.id, updatedData);
+          
+          // Update local state with the new status
+          const updatedSupplier = { ...supplier, status: newStatus };
+          setSuppliers(
+            suppliers.map((s) => (s.id === supplier.id ? updatedSupplier : s))
+          );
+          if (selectedSupplier?.id === supplier.id) {
+            setSelectedSupplier(updatedSupplier);
+          }
+          // Reset filters to show the updated supplier
+          setFilters({ status: [] });
+          showToast(`Trạng thái đã được cập nhật thành "${newStatus}"!`, "success");
+        } catch (error: any) {
+          console.error("Toggle status error:", error);
+          let errorMsg = "Lỗi khi cập nhật trạng thái!";
+          
+          if (error.response) {
+            errorMsg = `API Error: ${error.response.status} - ${error.response.statusText}`;
+          } else if (error.request) {
+            errorMsg = "Không thể kết nối tới server";
+          }
+          
+          showToast(errorMsg, "error");
+        }
       },
     });
   };
@@ -248,13 +263,17 @@ export default function QuanLyNhaCungCap() {
   const handleEditSupplier = (supplier: Supplier) => {
     setSelectedSupplier(supplier);
     setFormData({
-      tenNCC: supplier.tenNCC,
-      diaChiNCC: supplier.diaChiNCC,
-      sdtNCC: supplier.sdtNCC,
-      emailNCC: supplier.emailNCC,
-      nguoiLienHe: supplier.nguoiLienHe,
-      dieuKienThanhToan: supplier.dieuKienThanhToan,
-      moTa: supplier.moTa,
+      code: supplier.code,
+      type: supplier.type,
+      name: supplier.name || "",
+      contactPerson: supplier.contactPerson || "",
+      title: supplier.title || "",
+      phone: supplier.phone || "",
+      email: supplier.email || "",
+      role: supplier.role || "",
+      citizenId: supplier.citizenId || "",
+      address: supplier.address || "",
+      status: supplier.status,
     });
     setView("edit");
   };
@@ -264,26 +283,20 @@ export default function QuanLyNhaCungCap() {
     setView("detail");
   };
 
-  const handleToggleStatus = (id: string) => {
-    setSuppliers(
-      suppliers.map((s) =>
-        s.id === id
-          ? {
-              ...s,
-              trangThai: s.trangThai === "Hoạt động" ? "Vô hiệu hóa" : "Hoạt động",
-            }
-          : s
-      )
-    );
-  };
 
-  const filteredSuppliers = suppliers.filter((supplier) =>
-    searchTerm.toLowerCase() === ""
+  const filteredSuppliers = suppliers.filter((supplier) => {
+    // Apply search filter
+    const matchesSearch = searchTerm.toLowerCase() === ""
       ? true
-      : supplier.tenNCC.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        supplier.diaChiNCC.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        supplier.sdtNCC.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+      : supplier.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        supplier.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        supplier.phone?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    // Apply status filter
+    const matchesStatus = filters.status.length === 0 || filters.status.includes(supplier.status);
+    
+    return matchesSearch && matchesStatus;
+  });
 
   const totalPages = Math.ceil(filteredSuppliers.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -332,7 +345,7 @@ export default function QuanLyNhaCungCap() {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
                   </svg>
-                  Thêm NCC
+                  Thêm nhà cung cấp
                 </button>
               </div>
             </div>
@@ -379,16 +392,16 @@ export default function QuanLyNhaCungCap() {
                             Trạng Thái
                           </label>
                           <div className="space-y-1">
-                            {["Hoạt động", "Ngừng hoạt động"].map(status => (
+                            {["Hoạt động", "Ngừng hợp tác"].map(status => (
                               <label key={status} className="flex items-center gap-2 p-1 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer">
                                 <input
                                   type="checkbox"
-                                  checked={filters.trangThai.includes(status)}
+                                  checked={filters.status.includes(status)}
                                   onChange={(e) => {
                                     if (e.target.checked) {
-                                      setFilters({ ...filters, trangThai: [...filters.trangThai, status] });
+                                      setFilters({ ...filters, status: [...filters.status, status] });
                                     } else {
-                                      setFilters({ ...filters, trangThai: filters.trangThai.filter(s => s !== status) });
+                                      setFilters({ ...filters, status: filters.status.filter((s: string) => s !== status) });
                                     }
                                   }}
                                   className="rounded"
@@ -414,7 +427,13 @@ export default function QuanLyNhaCungCap() {
           </div>
 
           {/* Table Section */}
-          <div className="overflow-x-auto">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+              <p className="mt-4 text-sm text-gray-600 dark:text-gray-400">Đang tải danh sách nhà cung cấp...</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-800">
@@ -444,115 +463,115 @@ export default function QuanLyNhaCungCap() {
                     <td className="px-5 py-4">
                       <input 
                         type="checkbox" 
-                        checked={selectedItems.includes(supplier.id)}
-                        onChange={() => handleSelectItem(supplier.id)}
+                        checked={supplier.id ? selectedItems.includes(supplier.id) : false}
+                        onChange={() => supplier.id && handleSelectItem(supplier.id)}
                         className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-800"
                       />
                     </td>
                     <td className="px-5 py-4">
                       <p className="font-medium text-gray-900 dark:text-white text-sm">
-                        {supplier.tenNCC}
+                        {supplier.name}
                       </p>
                     </td>
                     <td className="px-5 py-4">
                       <span className="text-sm text-gray-600 dark:text-gray-400">
-                        {supplier.diaChiNCC}
+                        {supplier.address}
                       </span>
                     </td>
                     <td className="px-5 py-4">
                       <span className="text-sm text-gray-600 dark:text-gray-400">
-                        {supplier.sdtNCC}
+                        {supplier.phone}
                       </span>
                     </td>
                     <td className="px-5 py-4">
                       <span className="text-sm text-gray-600 dark:text-gray-400">
-                        {supplier.emailNCC}
+                        {supplier.email}
                       </span>
                     </td>
                     <td className="px-5 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                        supplier.trangThai === "Hoạt động"
+                      <span className={`inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-medium ${
+                        supplier.status === "Hoạt động"
                           ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
                           : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
                       }`}>
-                        {supplier.trangThai}
+                        {supplier.status}
                       </span>
                     </td>
                     <td className="px-5 py-4">
                       <span className="text-sm text-gray-600 dark:text-gray-400">
-                        {formatDate(supplier.ngayTao)}
+                        {supplier.createdTime ? formatDate(supplier.createdTime) : "-"}
                       </span>
                     </td>
-                    <td className="px-5 py-4">
+                    <td className="px-5 py-4 text-right">
                       <ActionDropdown
-                        supplier={supplier}
                         onView={() => handleViewDetail(supplier)}
                         onEdit={() => handleEditSupplier(supplier)}
-                        onDelete={() => handleDeleteSupplier(supplier.id)}
+                        onToggleStatus={() => handleToggleStatus(supplier)}
+                        onDelete={() => supplier.id && handleDeleteSupplier(supplier.id)}
                       />
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+              {/* Empty State */}
+              {filteredSuppliers.length === 0 && (
+                <div className="py-16 text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                    <svg className="w-8 h-8 text-gray-400 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                    </svg>
+                  </div>
+                  <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-1">
+                    Không tìm thấy nhà cung cấp
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Hãy thêm nhà cung cấp mới hoặc thay đổi từ khóa tìm kiếm.
+                  </p>
+                </div>
+              )}
 
-          {/* Empty State */}
-          {filteredSuppliers.length === 0 && (
-            <div className="py-16 text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-                <svg className="w-8 h-8 text-gray-400 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                </svg>
-              </div>
-              <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-1">
-                Không tìm thấy nhà cung cấp
-              </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Hãy thêm nhà cung cấp mới hoặc thay đổi từ khóa tìm kiếm.
-              </p>
-            </div>
-          )}
-
-          {/* Pagination */}
-          {filteredSuppliers.length > 0 && (
-            <div className="px-5 lg:px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Hiển thị <span className="font-medium text-gray-900 dark:text-white">{startIndex + 1}</span> đến <span className="font-medium text-gray-900 dark:text-white">{Math.min(startIndex + itemsPerPage, filteredSuppliers.length)}</span> của <span className="font-medium text-gray-900 dark:text-white">{filteredSuppliers.length}</span>
-              </p>
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                  disabled={currentPage === 1}
-                  className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-                  </svg>
-                </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                  <button
-                    key={page}
-                    onClick={() => setCurrentPage(page)}
-                    className={`w-9 h-9 rounded-lg text-sm font-medium transition-all duration-200 ${
-                      currentPage === page
-                        ? "bg-blue-600 text-white shadow-sm"
-                        : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                    }`}
-                  >
-                    {page}
-                  </button>
-                ))}
-                <button 
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
-                  className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
+              {/* Pagination */}
+              {filteredSuppliers.length > 0 && (
+                <div className="px-5 lg:px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Đang hiển thị <span className="font-medium text-gray-900 dark:text-white">{startIndex + 1}</span> -  <span className="font-medium text-gray-900 dark:text-white">{Math.min(startIndex + itemsPerPage, filteredSuppliers.length)}</span> trên <span className="font-medium text-gray-900 dark:text-white">{filteredSuppliers.length}</span>
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1}
+                      className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`w-9 h-9 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          currentPage === page
+                            ? "bg-blue-600 text-white shadow-sm"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                    <button 
+                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                      disabled={currentPage === totalPages}
+                      className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -587,12 +606,40 @@ export default function QuanLyNhaCungCap() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Tên Nhà Cung Cấp <span className="text-red-500">*</span>
+                    Mã Code <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
-                    name="tenNCC"
-                    value={formData.tenNCC}
+                    name="code"
+                    value={formData.code}
+                    onChange={handleFormChange}
+                    className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+                    placeholder="VD: SUP001"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Loại <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="type"
+                    value={formData.type}
+                    onChange={handleFormChange}
+                    className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+                    placeholder="VD: Supplier"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Tên Nhà Cung Cấp
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={formData.name}
                     onChange={handleFormChange}
                     className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
                     placeholder="VD: Công ty TNHH ABC"
@@ -601,12 +648,12 @@ export default function QuanLyNhaCungCap() {
 
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Địa Chỉ <span className="text-red-500">*</span>
+                    Địa Chỉ
                   </label>
                   <input
                     type="text"
-                    name="diaChiNCC"
-                    value={formData.diaChiNCC}
+                    name="address"
+                    value={formData.address}
                     onChange={handleFormChange}
                     className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
                     placeholder="VD: 123 Đường Lê Lợi, TP HCM"
@@ -615,12 +662,12 @@ export default function QuanLyNhaCungCap() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    SĐT <span className="text-red-500">*</span>
+                    Điện Thoại
                   </label>
                   <input
                     type="text"
-                    name="sdtNCC"
-                    value={formData.sdtNCC}
+                    name="phone"
+                    value={formData.phone}
                     onChange={handleFormChange}
                     className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
                     placeholder="VD: 0287654321"
@@ -633,8 +680,8 @@ export default function QuanLyNhaCungCap() {
                   </label>
                   <input
                     type="email"
-                    name="emailNCC"
-                    value={formData.emailNCC}
+                    name="email"
+                    value={formData.email}
                     onChange={handleFormChange}
                     className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
                     placeholder="VD: contact@abc.com.vn"
@@ -647,8 +694,8 @@ export default function QuanLyNhaCungCap() {
                   </label>
                   <input
                     type="text"
-                    name="nguoiLienHe"
-                    value={formData.nguoiLienHe}
+                    name="contactPerson"
+                    value={formData.contactPerson}
                     onChange={handleFormChange}
                     className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
                     placeholder="VD: Nguyễn Văn A"
@@ -657,31 +704,46 @@ export default function QuanLyNhaCungCap() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Điều Kiện Thanh Toán
+                    Chức Danh
                   </label>
                   <input
                     type="text"
-                    name="dieuKienThanhToan"
-                    value={formData.dieuKienThanhToan}
+                    name="title"
+                    value={formData.title}
                     onChange={handleFormChange}
                     className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
-                    placeholder="VD: Thanh toán 30 ngày"
+                    placeholder="VD: Giám đốc"
                   />
                 </div>
 
-                <div className="md:col-span-2">
+                <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Mô Tả
+                    Vai Trò
                   </label>
-                  <textarea
-                    name="moTa"
-                    value={formData.moTa}
+                  <input
+                    type="text"
+                    name="role"
+                    value={formData.role}
                     onChange={handleFormChange}
-                    rows={3}
-                    className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 resize-none"
-                    placeholder="Mô tả chi tiết về nhà cung cấp..."
+                    className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+                    placeholder="VD: Sales"
                   />
                 </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Số CCCD
+                  </label>
+                  <input
+                    type="text"
+                    name="citizenId"
+                    value={formData.citizenId}
+                    onChange={handleFormChange}
+                    className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+                    placeholder="VD: 123456789"
+                  />
+                </div>
+
               </div>
             </div>
 
@@ -722,14 +784,14 @@ export default function QuanLyNhaCungCap() {
             <div className="p-5 lg:p-6 border-b border-gray-200 dark:border-gray-800">
               <div className="flex items-start gap-4">
                 <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-lg">
-                  {selectedSupplier.tenNCC.charAt(0).toUpperCase()}
+                  {selectedSupplier.name?.charAt(0).toUpperCase() || selectedSupplier.code.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1">
                   <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                    {selectedSupplier.tenNCC}
+                    {selectedSupplier.name || selectedSupplier.code}
                   </h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    {selectedSupplier.diaChiNCC}
+                    {selectedSupplier.address}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -740,7 +802,7 @@ export default function QuanLyNhaCungCap() {
                     Chỉnh sửa
                   </button>
                   <button
-                    onClick={() => handleDeleteSupplier(selectedSupplier.id)}
+                    onClick={() => selectedSupplier.id && handleDeleteSupplier(selectedSupplier.id)}
                     className="px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-all duration-200"
                   >
                     Xóa
@@ -753,10 +815,28 @@ export default function QuanLyNhaCungCap() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
                 <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50">
                   <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
-                    SĐT
+                    Code
                   </p>
                   <p className="text-lg font-semibold text-gray-900 dark:text-white">
-                    {selectedSupplier.sdtNCC}
+                    {selectedSupplier.code}
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+                    Loại
+                  </p>
+                  <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                    {selectedSupplier.type}
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+                    Điện Thoại
+                  </p>
+                  <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                    {selectedSupplier.phone}
                   </p>
                 </div>
 
@@ -765,7 +845,7 @@ export default function QuanLyNhaCungCap() {
                     Email
                   </p>
                   <p className="text-lg font-semibold text-gray-900 dark:text-white break-all">
-                    {selectedSupplier.emailNCC}
+                    {selectedSupplier.email}
                   </p>
                 </div>
 
@@ -774,7 +854,7 @@ export default function QuanLyNhaCungCap() {
                     Người Liên Hệ
                   </p>
                   <p className="text-lg font-semibold text-gray-900 dark:text-white">
-                    {selectedSupplier.nguoiLienHe}
+                    {selectedSupplier.contactPerson || "-"}
                   </p>
                 </div>
 
@@ -782,21 +862,21 @@ export default function QuanLyNhaCungCap() {
                   <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
                     Trạng Thái
                   </p>
-                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                    selectedSupplier.trangThai === "Hoạt động"
+                  <span className={`inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-medium ${
+                    selectedSupplier.status === "Hoạt động"
                       ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
                       : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
                   }`}>
-                    {selectedSupplier.trangThai}
+                    {selectedSupplier.status}
                   </span>
                 </div>
 
                 <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20">
                   <p className="text-xs font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-1">
-                    Điều Kiện TT
+                    Chức Danh
                   </p>
                   <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">
-                    {selectedSupplier.dieuKienThanhToan}
+                    {selectedSupplier.title || "-"}
                   </p>
                 </div>
 
@@ -805,18 +885,7 @@ export default function QuanLyNhaCungCap() {
                     Ngày Tạo
                   </p>
                   <p className="text-lg font-semibold text-gray-900 dark:text-white">
-                    {formatDate(selectedSupplier.ngayTao)}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-800">
-                <div>
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
-                    Mô Tả
-                  </p>
-                  <p className="text-gray-700 dark:text-gray-300 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50">
-                    {selectedSupplier.moTa || "Chưa có mô tả cho nhà cung cấp này."}
+                    {selectedSupplier.createdTime ? formatDate(selectedSupplier.createdTime) : "-"}
                   </p>
                 </div>
               </div>

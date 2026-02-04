@@ -289,8 +289,8 @@ export default function DonDatHang() {
 
           {/* Search and Filter Section */}
           <div className="p-5 lg:p-6 border-b border-gray-200 dark:border-gray-800 overflow-visible">
-            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
-              <div className="relative w-full sm:w-72">
+            <div className="flex flex-col gap-3 items-start justify-between">
+              <div className="relative w-full">
                 <svg
                   className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
                   fill="none"
@@ -316,8 +316,8 @@ export default function DonDatHang() {
                 />
               </div>
 
-              <div className="flex items-center gap-3 relative">
-                <div className="relative">
+              <div className="flex items-center gap-3 relative w-full">
+                <div className="relative flex-1">
                   <button
                     type="button"
                     onClick={() => setIsFilterOpen(!isFilterOpen)}
@@ -378,7 +378,7 @@ export default function DonDatHang() {
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as "ngayTao" | "tongTien")}
-                  className="px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-3 py-2.5 pr-8 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 whitespace-nowrap"
                 >
                   <option value="ngayTao">Sắp xếp theo ngày</option>
                   <option value="tongTien">Sắp xếp theo tiền</option>
@@ -386,7 +386,7 @@ export default function DonDatHang() {
 
                 <button
                   onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
-                  className="p-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+                  className="px-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all whitespace-nowrap"
                 >
                   {sortOrder === "asc" ? "↑" : "↓"}
                 </button>
@@ -459,7 +459,7 @@ export default function DonDatHang() {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center justify-center gap-2">
+                      <div className="flex items-center justify-center">
                         <ActionDropdown
                           onView={() => {
                             setSelectedOrder(order);
@@ -498,13 +498,13 @@ export default function DonDatHang() {
               {Math.min(currentPage * itemsPerPage, filteredOrders.length)} trong{" "}
               {filteredOrders.length} đơn hàng
             </p>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
               <button
                 onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                 disabled={currentPage === 1}
                 className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                Trước
+                ‹
               </button>
               {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
                 <button
@@ -524,7 +524,7 @@ export default function DonDatHang() {
                 disabled={currentPage === totalPages}
                 className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                Sau
+                ›
               </button>
             </div>
           </div>
@@ -1131,60 +1131,36 @@ function ActionDropdown({
   onDelete: () => void;
   onStatusChange: () => void;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
   return (
-    <div className="relative" ref={ref}>
+    <div className="flex gap-2 items-center">
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+        onClick={onView}
+        className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors flex items-center justify-center"
+        title="Xem chi tiết"
       >
-        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M12 5a2 2 0 110-4 2 2 0 010 4zm0 7a2 2 0 110-4 2 2 0 010 4zm0 7a2 2 0 110-4 2 2 0 010 4z" />
+        <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
         </svg>
       </button>
-
-      {isOpen && (
-        <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-10">
-          <button
-            onClick={() => {
-              onView();
-              setIsOpen(false);
-            }}
-            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 first:rounded-t-lg"
-          >
-            Xem Chi Tiết
-          </button>
-          <button
-            onClick={() => {
-              onEdit();
-              setIsOpen(false);
-            }}
-            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border-t border-gray-200 dark:border-gray-700"
-          >
-            Chỉnh Sửa
-          </button>
-          <button
-            onClick={() => {
-              onStatusChange();
-              setIsOpen(false);
-            }}
-            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border-t border-gray-200 dark:border-gray-700"
-          >
-            Cập Nhật Trạng Thái
-          </button>
-          <button
-            onClick={() => {
-              onDelete();
-              setIsOpen(false);
-            }}
-            className="w-full text-left px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 border-t border-gray-200 dark:border-gray-700 last:rounded-b-lg"
-          >
-            Xóa
-          </button>
-        </div>
-      )}
+      <button
+        onClick={onEdit}
+        className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors flex items-center justify-center"
+        title="Chỉnh sửa"
+      >
+        <svg className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+        </svg>
+      </button>
+      <button
+        onClick={onDelete}
+        className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors flex items-center justify-center"
+        title="Xóa"
+      >
+        <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+      </button>
     </div>
   );
 }

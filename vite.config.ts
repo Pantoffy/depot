@@ -15,4 +15,15 @@ export default defineConfig({
       },
     }),
   ],
+
+  //bypass cors policy using vite proxy
+  server: {
+    proxy: {
+      "/api": {
+        target: "https://localhost:7174",
+        changeOrigin: true,
+        secure: false, // Cho phép self-signed SSL certificate
+      },
+    },
+  },
 });

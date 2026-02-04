@@ -5,8 +5,9 @@ export default {
   darkMode: "class",
   theme: {
     fontFamily: {
-      sans: ["Be Vietnam Pro", "system-ui", "sans-serif"],
-      outfit: ["Outfit", "sans-serif"],
+      sans: ["Plus Jakarta Sans", "system-ui", "sans-serif"],
+      jakarta: ["Plus Jakarta Sans", "sans-serif"],
+      outfit: ["Plus Jakarta Sans", "sans-serif"],
     },
     screens: {
       "2xsm": "375px",
