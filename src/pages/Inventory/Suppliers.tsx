@@ -11,13 +11,11 @@ import { supplierService, Supplier } from "../../services/supplierService";
 const ActionDropdown = ({ 
   onView, 
   onEdit, 
-  onDelete,
-  onToggleStatus
+  onDelete
 }: { 
   onView: () => void; 
   onEdit: () => void; 
   onDelete: () => void;
-  onToggleStatus: () => void;
 }) => {
   return (
     <div className="flex gap-2">
@@ -38,15 +36,6 @@ const ActionDropdown = ({
       >
         <svg className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-        </svg>
-      </button>
-      <button
-        onClick={onToggleStatus}
-        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
-        title="Ngừng hợp tác"
-      >
-        <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />
         </svg>
       </button>
       <button
@@ -513,7 +502,6 @@ export default function Suppliers() {
                       <ActionDropdown
                         onView={() => handleViewDetail(supplier)}
                         onEdit={() => handleEditSupplier(supplier)}
-                        onToggleStatus={() => handleToggleStatus(supplier)}
                         onDelete={() => supplier.id && handleDeleteSupplier(supplier.id)}
                       />
                     </td>
@@ -554,19 +542,51 @@ export default function Suppliers() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
                       </svg>
                     </button>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                      <button
-                        key={page}
-                        onClick={() => setCurrentPage(page)}
-                        className={`w-9 h-9 rounded-lg text-sm font-medium transition-all duration-200 ${
-                          currentPage === page
-                            ? "bg-blue-600 text-white shadow-sm"
-                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                        }`}
-                      >
-                        {page}
-                      </button>
-                    ))}
+                    {(() => {
+                      const pages = [];
+                      const maxVisible = 5;
+                      let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+                      let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+                      if (endPage - startPage + 1 < maxVisible) {
+                        startPage = Math.max(1, endPage - maxVisible + 1);
+                      }
+
+                      pages.push(1);
+                      if (startPage > 2) {
+                        pages.push('...');
+                      }
+                      for (let i = Math.max(2, startPage); i <= Math.min(totalPages - 1, endPage); i++) {
+                        if (!pages.includes(i)) {
+                          pages.push(i);
+                        }
+                      }
+                      if (endPage < totalPages - 1) {
+                        pages.push('...');
+                      }
+                      if (totalPages > 1 && !pages.includes(totalPages)) {
+                        pages.push(totalPages);
+                      }
+
+                      return pages.map((page, idx) => (
+                        page === '...' ? (
+                          <span key={`ellipsis-${idx}`} className="text-gray-500 dark:text-gray-400">
+                            ...
+                          </span>
+                        ) : (
+                          <button
+                            key={page}
+                            onClick={() => setCurrentPage(page as number)}
+                            className={`w-9 h-9 rounded-lg text-sm font-medium transition-all duration-200 ${
+                              currentPage === page
+                                ? "bg-blue-600 text-white shadow-sm"
+                                : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        )
+                      ));
+                    })()}
                     <button 
                       onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                       disabled={currentPage === totalPages}
@@ -903,7 +923,7 @@ export default function Suppliers() {
                   Ngày Tạo
                 </p>
                 <p className="text-sm text-gray-900 dark:text-white mt-1">
-                  {formatDate(selectedSupplier.createdTime)}
+                  {selectedSupplier.createdTime ? formatDate(selectedSupplier.createdTime) : "-"}
                 </p>
               </div>
             </div>
@@ -917,6 +937,15 @@ export default function Suppliers() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
                 Chỉnh Sửa
+              </button>
+              <button
+                onClick={() => handleToggleStatus(selectedSupplier)}
+                className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-all duration-200 shadow-sm"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Đổi Trạng Thái
               </button>
               <button
                 onClick={() => selectedSupplier.id && handleDeleteSupplier(selectedSupplier.id)}

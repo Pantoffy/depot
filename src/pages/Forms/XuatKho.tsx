@@ -512,19 +512,51 @@ export default function XuatKho() {
               >
                 ‹
               </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  className={`px-4 py-2 text-sm rounded-lg transition-colors ${
-                    page === currentPage
-                      ? "bg-blue-600 text-white"
-                      : "border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
-                  }`}
-                >
-                  {page}
-                </button>
-              ))}
+              {(() => {
+                const pages = [];
+                const maxVisible = 5;
+                let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+                let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+                if (endPage - startPage + 1 < maxVisible) {
+                  startPage = Math.max(1, endPage - maxVisible + 1);
+                }
+
+                pages.push(1);
+                if (startPage > 2) {
+                  pages.push('...');
+                }
+                for (let i = Math.max(2, startPage); i <= Math.min(totalPages - 1, endPage); i++) {
+                  if (!pages.includes(i)) {
+                    pages.push(i);
+                  }
+                }
+                if (endPage < totalPages - 1) {
+                  pages.push('...');
+                }
+                if (totalPages > 1 && !pages.includes(totalPages)) {
+                  pages.push(totalPages);
+                }
+
+                return pages.map((page, idx) => (
+                  page === '...' ? (
+                    <span key={`ellipsis-${idx}`} className="text-gray-500 dark:text-gray-400">
+                      ...
+                    </span>
+                  ) : (
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page as number)}
+                      className={`px-4 py-2 text-sm rounded-lg transition-colors ${
+                        page === currentPage
+                          ? "bg-blue-600 text-white"
+                          : "border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  )
+                ));
+              })()}
               <button
                 onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage === totalPages}

@@ -1,11 +1,13 @@
 "use client";
-import { supplierService } from "../../services/supplierService";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
 import { materialService, Material } from "../../services/materialService";
+import { categoryService, Category, suggestCategory, DEFAULT_CATEGORIES } from "../../services/categoryService";
+import { unitService, Unit, suggestUnit, DEFAULT_UNITS } from "../../services/unitService";
+import { inventoryService, InventoryItem } from "../../services/inventoryService";
 
 // Dropdown Action Component
 const ActionDropdown = ({ 
@@ -63,7 +65,14 @@ export default function Materials() {
     status: [],
   });
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
+  const itemsPerPage = 7;
+
+  // Category states
+  const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
+
+  // Unit states
+  const [units, setUnits] = useState<Unit[]>(DEFAULT_UNITS);
+  const [inventories, setInventories] = useState<InventoryItem[]>([]);
 
   const [formData, setFormData] = useState({
     code: "",
@@ -76,10 +85,35 @@ export default function Materials() {
     status: "",
   });
 
-  // Fetch materials on mount
+  // Fetch materials and categories on mount
   useEffect(() => {
     fetchMaterials();
+    fetchCategories();
+    fetchUnits();
+    fetchInventories();
   }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const data = await categoryService.getAllCategories();
+      if (data && data.length > 0) {
+        setCategories(data);
+      }
+    } catch (error) {
+      console.warn("Không thể tải danh mục từ API, sử dụng danh sách mặc định.", error);
+    }
+  };
+
+  const fetchUnits = async () => {
+    try {
+      const data = await unitService.getAllUnits();
+      if (data && data.length > 0) {
+        setUnits(data);
+      }
+    } catch (error) {
+      console.warn("Không thể tải đơn vị từ API, sử dụng danh sách mặc định.", error);
+    }
+  };
 
   const fetchMaterials = async () => {
     try {
@@ -101,6 +135,16 @@ export default function Materials() {
     }
   };
 
+  const fetchInventories = async () => {
+    try {
+      const data = await inventoryService.getAllInventories();
+      setInventories(data || []);
+    } catch (error) {
+      console.warn("Không thể tải tồn kho từ API.", error);
+      setInventories([]);
+    }
+  };
+
   // Reset form
   const resetForm = () => {
     setFormData({
@@ -111,7 +155,7 @@ export default function Materials() {
       supplierId: 1,
       stockQuantity: "",
       note: "",
-      status: "Hoạt động",
+      status: "Đang kinh doanh",
     });
   };
 
@@ -124,7 +168,35 @@ export default function Materials() {
       ...prev,
       [name]: ["categoryId", "unitId", "supplierId"].includes(name) ? parseInt(value) : value,
     }));
+
+    // Auto-fill category and unit when material name changes
+    if (name === "name") {
+      handleAutoFillCategory(value);
+      handleAutoFillUnit(value);
+    }
   };
+
+  // Auto-fill category based on material name keywords
+  const handleAutoFillCategory = useCallback((materialName: string) => {
+    const suggestion = suggestCategory(materialName);
+    if (suggestion) {
+      setFormData((prev) => ({
+        ...prev,
+        categoryId: suggestion.categoryId,
+      }));
+    }
+  }, []);
+
+  // Auto-fill unit based on material name keywords
+  const handleAutoFillUnit = useCallback((materialName: string) => {
+    const suggestion = suggestUnit(materialName);
+    if (suggestion) {
+      setFormData((prev) => ({
+        ...prev,
+        unitId: suggestion.unitId,
+      }));
+    }
+  }, []);
 
   // Save material
   const handleSaveMaterial = async () => {
@@ -245,6 +317,66 @@ export default function Materials() {
     return date.toLocaleDateString('vi-VN', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
+  // Lấy tên đơn vị: ưu tiên unitName từ API, fallback tra từ danh sách units
+  const getUnitName = (material: Material) => {
+    if (material.unitName) return material.unitName;
+    const unit = units.find((u) => u.id === material.unitId);
+    return unit?.name || "";
+  };
+
+  const getWarehouseNames = (materialId?: number) => {
+    if (!materialId) return "-";
+    const names = inventories
+      .filter((item) => item.materialId === materialId)
+      .map((item) => item.warehouse?.name)
+      .filter((name): name is string => !!name);
+
+    const uniqueNames = [...new Set(names)];
+    return uniqueNames.length > 0 ? uniqueNames.join(", ") : "-";
+  };
+
+  // Xuất danh sách nguyên liệu ra file Excel (CSV)
+  const exportToExcel = () => {
+    const dataToExport = filteredMaterials.length > 0 ? filteredMaterials : materials;
+    if (dataToExport.length === 0) {
+      showToast("Không có dữ liệu để xuất!", "error");
+      return;
+    }
+
+    const headers = ["STT", "Mã", "Tên Nguyên Liệu", "Danh Mục", "Đơn Vị", "Kho", "Tồn Kho", "Trạng Thái", "Ghi Chú", "Ngày Tạo"];
+
+    const escapeCSV = (value: string) => {
+      if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+        return `"${value.replace(/"/g, '""')}"`;
+      }
+      return value;
+    };
+
+    const rows = dataToExport.map((m, index) => [
+      index + 1,
+      escapeCSV(m.code || ""),
+      escapeCSV(m.name || ""),
+      escapeCSV(m.categoryName || ""),
+      escapeCSV(getUnitName(m)),
+      escapeCSV(getWarehouseNames(m.id)),
+      m.stockQuantity ?? 0,
+      escapeCSV(m.status || ""),
+      escapeCSV(m.note || ""),
+      formatDate(m.createdTime),
+    ].join(","));
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const today = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `nguyen-lieu_${today}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast(`Đã xuất ${dataToExport.length} nguyên liệu ra file Excel!`, "success");
+  };
+
   return (
     <>
       <PageMeta title="Quản Lý Nguyên Liệu" description="Quản lý danh sách nguyên liệu" />
@@ -265,13 +397,13 @@ export default function Materials() {
               </div>
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => {}}
+                  onClick={exportToExcel}
                   className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
-                  Export
+                  Xuất Excel
                 </button>
                 <button
                   onClick={() => {
@@ -332,7 +464,7 @@ export default function Materials() {
                             Trạng Thái
                           </label>
                           <div className="space-y-1">
-                            {["Hoạt động", "Vô hiệu hóa"].map((status) => (
+                            {["Đang kinh doanh", "Ngừng kinh doanh"].map((status) => (
                               <label key={status} className="flex items-center gap-2 p-1 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer">
                                 <input
                                   type="checkbox"
@@ -427,7 +559,7 @@ export default function Materials() {
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-gray-900 dark:text-white">
-                            {material.stockQuantity} {material.unitName}
+                            {material.stockQuantity} {getUnitName(material)}
                           </span>
                         </div>
                       </td>
@@ -495,19 +627,55 @@ export default function Materials() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
                       </svg>
                     </button>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                      <button
-                        key={page}
-                        onClick={() => setCurrentPage(page)}
-                        className={`w-9 h-9 rounded-lg text-sm font-medium transition-all duration-200 ${
-                          currentPage === page
-                            ? "bg-blue-600 text-white shadow-sm"
-                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                        }`}
-                      >
-                        {page}
-                      </button>
-                    ))}
+                    {(() => {
+                      const pages = [];
+                      const maxVisible = 5;
+                      let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+                      let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+                      if (endPage - startPage + 1 < maxVisible) {
+                        startPage = Math.max(1, endPage - maxVisible + 1);
+                      }
+
+                      // Always show first page
+                      pages.push(1);
+                      if (startPage > 2) {
+                        pages.push('...');
+                      }
+                      // Show middle pages
+                      for (let i = Math.max(2, startPage); i <= Math.min(totalPages - 1, endPage); i++) {
+                        if (!pages.includes(i)) {
+                          pages.push(i);
+                        }
+                      }
+                      // Show ellipsis before last page if needed
+                      if (endPage < totalPages - 1) {
+                        pages.push('...');
+                      }
+                      // Always show last page if there's more than one page
+                      if (totalPages > 1 && !pages.includes(totalPages)) {
+                        pages.push(totalPages);
+                      }
+
+                      return pages.map((page, idx) => (
+                        page === '...' ? (
+                          <span key={`ellipsis-${idx}`} className="text-gray-500 dark:text-gray-400">
+                            ...
+                          </span>
+                        ) : (
+                          <button
+                            key={page}
+                            onClick={() => setCurrentPage(page as number)}
+                            className={`w-9 h-9 rounded-lg text-sm font-medium transition-all duration-200 ${
+                              currentPage === page
+                                ? "bg-blue-600 text-white shadow-sm"
+                                : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        )
+                      ));
+                    })()}
                     <button
                       onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                       disabled={currentPage === totalPages}
@@ -579,28 +747,49 @@ export default function Materials() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Danh Mục
                 </label>
-                <input
-                  type="number"
-                  name="categoryId"
-                  value={formData.categoryId}
-                  onChange={handleFormChange}
-                  className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                  placeholder="1"
-                />
+                {categories.length > 0 ? (
+                  <select
+                    name="categoryId"
+                    value={formData.categoryId}
+                    onChange={handleFormChange}
+                    className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  >
+                    <option value="" disabled>Chọn danh mục</option>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select
+                    name="categoryId"
+                    value={formData.categoryId}
+                    onChange={handleFormChange}
+                    className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  >
+                    <option value={formData.categoryId}>{formData.categoryId}</option>
+                  </select>
+                )}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Đơn Vị
                 </label>
-                <input
-                  type="number"
+                <select
                   name="unitId"
                   value={formData.unitId}
                   onChange={handleFormChange}
-                  className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                  placeholder="1"
-                />
+                  className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                >
+                  <option value="" disabled>Chọn đơn vị</option>
+                  {units.map((unit) => (
+                    <option key={unit.id} value={unit.id}>
+                      {unit.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -641,8 +830,8 @@ export default function Materials() {
                   onChange={handleFormChange}
                   className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                 >
-                  <option>Hoạt động</option>
-                  <option>Vô hiệu hóa</option>
+                  <option>Đang kinh doanh</option>
+                  <option>Ngừng kinh doanh</option>
                 </select>
               </div>
 
@@ -738,7 +927,7 @@ export default function Materials() {
                   Đơn Vị
                 </p>
                 <p className="text-sm text-gray-900 dark:text-white mt-1">
-                  {selectedMaterial.unitName}
+                  {getUnitName(selectedMaterial)}
                 </p>
               </div>
 
@@ -748,6 +937,15 @@ export default function Materials() {
                 </p>
                 <p className="text-sm text-gray-900 dark:text-white mt-1">
                   {selectedMaterial.supplier?.name}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Kho
+                </p>
+                <p className="text-sm text-gray-900 dark:text-white mt-1">
+                  {getWarehouseNames(selectedMaterial.id)}
                 </p>
               </div>
 

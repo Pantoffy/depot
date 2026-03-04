@@ -27,7 +27,7 @@ const navItems: NavItem[] = [
 {
     icon: <GridIcon />,
     name: "Dashboard",
-    subItems: [{ name: "Ecommerce", path: "/", pro: false }],
+    subItems: [{ name: "Tổng quan", path: "/", pro: false }],
   },
   {
     icon: <CalenderIcon />,
@@ -38,44 +38,23 @@ const navItems: NavItem[] = [
     name: "Hoạt động kho",
     icon: <ListIcon />,
     subItems: [
-      { name: "Đơn Đặt Hàng", path: "/don-dat-hang", pro: false },
-      { name: "Nhập Kho", path: "/nhap-kho", pro: false },
-      { name: "Xuất Kho", path: "/xuat-kho", pro: false },
+      { name: "Đơn đặt hàng", path: "/don-dat-hang", pro: false },
+      { name: "Nhập kho", path: "/nhap-kho", pro: false },
+      { name: "Xuất kho", path: "/xuat-kho", pro: false },
     ],    
   },
   {
-    name: "Quản Lý Kho",
+    name: "Quản lý dữ liệu",
     icon: <BoxCubeIcon />,
     subItems: [
-      { name: "Danh Mục Nguyên Liệu", path: "/quan-ly-nguyen-lieu", pro: false },
-      { name: "Nhà Cung Cấp", path: "/quan-ly-nha-cung-cap", pro: false },
-      { name: "Quản Lý Kho", path: "/quan-ly-kho", pro: false },
-    ],
-  },
-
-  {
-    name: "Trang",
-    icon: <PageIcon />,
-    subItems: [
-      { name: "Trang trống", path: "/blank", pro: false },
-      { name: "Lỗi 404", path: "/error-404", pro: false },
+      { name: "Danh mục nguyên liệu", path: "/quan-ly-nguyen-lieu", pro: false },
+      { name: "Nhà cung cấp", path: "/quan-ly-nha-cung-cap", pro: false },
+      { name: "Quản lý kho", path: "/quan-ly-kho", pro: false },
     ],
   },
 ];
 
 const othersItems: NavItem[] = [
-  {
-    icon: <BoxCubeIcon />,
-    name: "Thành phần UI",
-    subItems: [
-      { name: "Cảnh báo", path: "/alerts", pro: false },
-      { name: "Avatar", path: "/avatars", pro: false },
-      { name: "Badge", path: "/badge", pro: false },
-      { name: "Nút", path: "/buttons", pro: false },
-      { name: "Hình ảnh", path: "/images", pro: false },
-      { name: "Video", path: "/videos", pro: false },
-    ],
-  },
   {
     icon: <PlugInIcon />,
     name: "Xác thực",
