@@ -88,7 +88,6 @@ export default function QuanLyKho() {
       const data = await warehouseService.getAllWarehouses();
       console.log("Warehouses data:", data);
       setWarehouses(data);
-      showToast("Tải dữ liệu thành công!", "success");
     } catch (error: any) {
       let errorMsg = "Unknown error";
       
@@ -282,8 +281,8 @@ export default function QuanLyKho() {
 
   return (
     <>
-      <PageMeta title="Quản Lý Kho" description="Quản lý kho và theo dõi tồn kho" />
-      <PageBreadcrumb pageTitle="Quản Lý Kho" />
+      <PageMeta title="Quản lý kho" description="Quản lý kho và theo dõi tồn kho" />
+      <PageBreadcrumb pageTitle="Quản lý kho" />
 
       {view === "list" && (
         <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
@@ -292,7 +291,7 @@ export default function QuanLyKho() {
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Danh Sách Kho
+                  Danh sách kho
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   Quản lý kho và theo dõi tồn kho của bạn.
@@ -600,7 +599,7 @@ export default function QuanLyKho() {
           <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
             <div className="p-5 lg:p-6 border-b border-gray-200 dark:border-gray-800">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                {view === "create" ? "Thêm Kho Mới" : "Chỉnh Sửa Kho"}
+                {view === "create" ? "Thêm kho mới" : "Chỉnh sửa kho"}
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 {view === "create" ? "Điền thông tin để thêm kho mới." : "Cập nhật thông tin kho."}
@@ -885,7 +884,7 @@ export default function QuanLyKho() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
-                Chỉnh Sửa
+                Chỉnh sửa
               </button>
               <button
                 onClick={() => selectedWarehouse.id && handleDeleteWarehouse(selectedWarehouse.id)}

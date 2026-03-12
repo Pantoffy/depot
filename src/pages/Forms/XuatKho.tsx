@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
 
+// Interface: Hàng hóa xuất kho
 interface Material {
   stt: number;
   id: string;
@@ -16,6 +17,7 @@ interface Material {
   donGia: number;
 }
 
+// Interface: Phiếu xuất kho
 interface ExportReceipt {
   id: string;
   ngayTao: string;
@@ -84,7 +86,6 @@ export default function XuatKho() {
   const itemsPerPage = 5;
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filters, setFilters] = useState({ kho: "", trangThai: "" });
-  const [filterSearch, setFilterSearch] = useState({ kho: "", trangThai: "" });
 
   const [formData, setFormData] = useState({
     soPhieu: "",
@@ -187,6 +188,8 @@ export default function XuatKho() {
     showToast("Cập nhật trạng thái thành công", "success");
   };
 
+  const warehouseFilterOptions = Array.from(new Set(receipts.map((r) => r.kho).filter(Boolean)));
+
   // Filter and sort
   const filteredReceipts = receipts
     .filter(
@@ -215,8 +218,8 @@ export default function XuatKho() {
   if (view === "list") {
     return (
       <div className="space-y-4">
-        <PageBreadcrumb pageTitle="Phiếu Xuất Kho" />
-        <PageMeta title="Phiếu Xuất Kho" description="Quản lý phiếu xuất kho" />
+        <PageBreadcrumb pageTitle="Phiếu xuất kho" />
+        <PageMeta title="Phiếu xuất kho" description="Quản lý phiếu xuất kho" />
 
         <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
           {/* Header Section */}
@@ -224,7 +227,7 @@ export default function XuatKho() {
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Danh Sách Phiếu Xuất Kho
+                  Danh sách phiếu xuất kho
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   Quản lý phiếu xuất kho hàng hóa và theo dõi bán hàng.
@@ -300,17 +303,17 @@ export default function XuatKho() {
                 />
               </div>
 
-              <div className="flex items-center gap-3 relative">
+              <div className="flex items-center gap-3 w-full sm:w-auto">
                 <div className="relative">
                   <button
                     type="button"
                     onClick={() => setIsFilterOpen(!isFilterOpen)}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                     </svg>
-                    Filter
+                    Bộ lọc
                   </button>
 
                   {isFilterOpen && (
@@ -325,20 +328,16 @@ export default function XuatKho() {
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                               Kho
                             </label>
-                            <input
-                            type="text"
-                            placeholder="Tìm kho..."
-                            value={filterSearch.kho}
-                            onChange={(e) => setFilterSearch({ ...filterSearch, kho: e.target.value })}
-                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                          <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
-                            {["kho-a", "kho-b", "kho-c"].filter(k => k.includes(filterSearch.kho.toLowerCase())).map(kho => (
-                              <label key={kho} className="flex items-center gap-2 cursor-pointer">
+                            <div className="space-y-1 max-h-40 overflow-y-auto">
+                              {warehouseFilterOptions.map((kho) => (
+                                <label key={kho} className="flex items-center gap-2 p-1 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer">
                                 <input
                                   type="checkbox"
                                   checked={filters.kho === kho}
-                                  onChange={(e) => setFilters({ ...filters, kho: e.target.checked ? kho : "" })}
+                                  onChange={(e) => {
+                                    setFilters({ ...filters, kho: e.target.checked ? kho : "" });
+                                    setCurrentPage(1);
+                                  }}
                                   className="rounded"
                                 />
                                 <span className="text-sm text-gray-700 dark:text-gray-300">{kho}</span>
@@ -349,22 +348,18 @@ export default function XuatKho() {
 
                         <div>
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            Trạng Thái
+                            Trạng thái
                           </label>
-                          <input
-                            type="text"
-                            placeholder="Tìm trạng thái..."
-                            value={filterSearch.trangThai}
-                            onChange={(e) => setFilterSearch({ ...filterSearch, trangThai: e.target.value })}
-                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                          <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
-                            {["Chờ xác nhận", "Đã xác nhận"].filter(s => s.toLowerCase().includes(filterSearch.trangThai.toLowerCase())).map(status => (
-                              <label key={status} className="flex items-center gap-2 cursor-pointer">
+                          <div className="space-y-1">
+                            {["Chờ xác nhận", "Đã xác nhận"].map((status) => (
+                              <label key={status} className="flex items-center gap-2 p-1 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer">
                                 <input
                                   type="checkbox"
                                   checked={filters.trangThai === status}
-                                  onChange={(e) => setFilters({ ...filters, trangThai: e.target.checked ? status : "" })}
+                                  onChange={(e) => {
+                                    setFilters({ ...filters, trangThai: e.target.checked ? status : "" });
+                                    setCurrentPage(1);
+                                  }}
                                   className="rounded"
                                 />
                                 <span className="text-sm text-gray-700 dark:text-gray-300">{status}</span>
@@ -377,7 +372,7 @@ export default function XuatKho() {
                             onClick={() => setIsFilterOpen(false)}
                             className="w-full px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
                           >
-                            Apply
+                            Áp dụng
                           </button>
                         </div>
                       </div>
@@ -388,15 +383,15 @@ export default function XuatKho() {
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as "ngayTao" | "tongTien")}
-                  className="px-3 py-2.5 pr-8 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-3 py-2 pr-8 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="ngayTao">Sắp xếp theo ngày</option>
-                  <option value="tongTien">Sắp xếp theo tiền</option>
+                  <option value="tongTien">Sắp xếp theo giá trị</option>
                 </select>
 
                 <button
                   onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
-                  className="p-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+                  className="p-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
                 >
                   {sortOrder === "asc" ? "↑" : "↓"}
                 </button>
@@ -487,7 +482,6 @@ export default function XuatKho() {
                             setView("edit");
                           }}
                           onDelete={() => handleDeleteReceipt(receipt.id)}
-                          onStatusChange={() => handleStatusChange(receipt.id)}
                         />
                       </div>
                     </td>
@@ -1124,12 +1118,10 @@ function ActionDropdown({
   onView,
   onEdit,
   onDelete,
-  onStatusChange,
 }: {
   onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
-  onStatusChange: () => void;
 }) {
   return (
     <div className="flex gap-2 items-center">

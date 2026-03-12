@@ -120,8 +120,37 @@ export default function Home() {
     .filter((m) => m.stockQuantity <= 10 && m.status === "Đang kinh doanh")
     .sort((a, b) => a.stockQuantity - b.stockQuantity);
 
-  const activeSuppliers = suppliers.filter((s) => s.status === "Đang hoạt động" || s.status === "Đang kinh doanh");
-  const activeWarehouses = warehouses.filter((w) => w.status === "Đang hoạt động" || w.status === "Đang kinh doanh");
+  const activeSuppliers = suppliers.filter((s) => s.status === "Ngừng hợp tác" || s.status === "Đang kinh doanh");
+  const activeWarehouses = warehouses.filter((w) => w.status === "Bảo trì" || w.status === "Đang kinh doanh");
+
+  const pendingImports = imports.filter((imp) => {
+    const normalized = (imp.status || "").trim().toLowerCase();
+    return normalized !== "approved" && normalized !== "đã xác nhận" && normalized !== "da xac nhan";
+  }).length;
+  const approvedImports = imports.length - pendingImports;
+
+  const outOfStockMaterials = materials.filter(
+    (m) => m.stockQuantity <= 0 && m.status === "Đang kinh doanh"
+  );
+  const inventoryHealthRate =
+    activeMaterials.length === 0
+      ? 0
+      : Math.round(
+          (activeMaterials.filter((m) => m.stockQuantity > 10).length / activeMaterials.length) * 100
+        );
+
+  const totalStockQuantity = materials.reduce((sum, m) => sum + Number(m.stockQuantity || 0), 0);
+  const totalWarehouseArea = warehouses.reduce((sum, w) => sum + Number(w.area || 0), 0);
+
+  const topCategories = Object.entries(
+    materials.reduce((acc, material) => {
+      const key = material.categoryName || "Chưa phân loại";
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>)
+  )
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
 
   const recentImports = [...imports]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -155,12 +184,18 @@ export default function Home() {
 
   // Total import value
   const totalImportValue = imports.reduce((sum, imp) => sum + (imp.totalAmount || 0), 0);
+  const todayLabel = new Date().toLocaleDateString("vi-VN", {
+    weekday: "long",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 
   if (loading) {
     return (
       <>
-        <PageMeta title="Tổng Quan | Quản Lý Kho" description="Tổng quan hệ thống quản lý kho" />
-        <PageBreadcrumb pageTitle="Tổng Quan" />
+        <PageMeta title="Tổng quan | Quản lý kho" description="Tổng quan hệ thống quản lý kho" />
+        <PageBreadcrumb pageTitle="Tổng quan" />
         <div className="flex flex-col items-center justify-center py-20">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
           <p className="mt-4 text-sm text-gray-600 dark:text-gray-400">Đang tải dữ liệu...</p>
@@ -171,8 +206,49 @@ export default function Home() {
 
   return (
     <>
-      <PageMeta title="Tổng Quan | Quản Lý Kho" description="Tổng quan hệ thống quản lý kho" />
-      <PageBreadcrumb pageTitle="Tổng Quan" />
+      <PageMeta title="Tổng quan | Quản lý kho" description="Tổng quan hệ thống quản lý kho" />
+      <PageBreadcrumb pageTitle="Tổng quan" />
+
+      {/* Hero overview */}
+      <div className="mb-6 overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-900 via-blue-900 to-cyan-900 text-white shadow-xl">
+        <div className="relative p-6 lg:p-7">
+          <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-cyan-300/20 blur-2xl" />
+          <div className="pointer-events-none absolute -bottom-20 left-1/3 h-44 w-44 rounded-full bg-blue-300/20 blur-2xl" />
+
+          <div className="relative z-10 grid grid-cols-1 gap-5 lg:grid-cols-[1.3fr_1fr] lg:items-end">
+            <div>
+              <p className="text-xs uppercase tracking-[0.22em] text-cyan-200/80">Warehouse Control</p>
+              <h2 className="mt-2 text-2xl font-bold leading-tight lg:text-3xl">Tổng Quan Vận Hành Kho</h2>
+              <p className="mt-2 text-sm text-slate-200">
+                {todayLabel}. Hệ thống hiện có {materials.length} nguyên liệu, {imports.length} phiếu nhập và {pendingImports} phiếu đang chờ xác nhận.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-white/20 bg-white/10 p-3 backdrop-blur-sm">
+                <p className="text-[11px] uppercase text-slate-200">Sức khỏe tồn kho</p>
+                <p className="mt-1 text-xl font-bold">{inventoryHealthRate}%</p>
+                <p className="text-xs text-slate-200">Mức tồn ổn định</p>
+              </div>
+              <div className="rounded-xl border border-white/20 bg-white/10 p-3 backdrop-blur-sm">
+                <p className="text-[11px] uppercase text-slate-200">Nguyên liệu tồn kho thấp</p>
+                <p className="mt-1 text-xl font-bold">{lowStockMaterials.length}</p>
+                <p className="text-xs text-slate-200">Cần nhập bổ sung</p>
+              </div>
+              <div className="rounded-xl border border-white/20 bg-white/10 p-3 backdrop-blur-sm">
+                <p className="text-[11px] uppercase text-slate-200">Tổng tồn</p>
+                <p className="mt-1 text-xl font-bold">{totalStockQuantity.toLocaleString("vi-VN")}</p>
+                <p className="text-xs text-slate-200">Đơn vị gộp</p>
+              </div>
+              <div className="rounded-xl border border-white/20 bg-white/10 p-3 backdrop-blur-sm">
+                <p className="text-[11px] uppercase text-slate-200">Diện tích kho</p>
+                <p className="mt-1 text-xl font-bold">{totalWarehouseArea.toLocaleString("vi-VN")}</p>
+                <p className="text-xs text-slate-200">m2</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Cảnh báo tồn kho thấp */}
       {lowStockMaterials.length > 0 && (
@@ -194,7 +270,7 @@ export default function Home() {
       )}
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 mb-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 mb-6">
         <StatCard
           title="Nguyên Liệu"
           value={materials.length}
@@ -208,9 +284,9 @@ export default function Home() {
           }
         />
         <StatCard
-          title="Nhà Cung Cấp"
+          title="Nhà cung cấp"
           value={suppliers.length}
-          subtitle={`${activeSuppliers.length} đang hoạt động`}
+          subtitle={`${activeSuppliers.length} ngừng hợp tác`}
           color="green"
           onClick={() => navigate("/quan-ly-nha-cung-cap")}
           icon={
@@ -222,7 +298,7 @@ export default function Home() {
         <StatCard
           title="Kho"
           value={warehouses.length}
-          subtitle={`${activeWarehouses.length} đang hoạt động`}
+          subtitle={`${activeWarehouses.length} đang bảo trì`}
           color="purple"
           onClick={() => navigate("/quan-ly-kho")}
           icon={
@@ -232,9 +308,9 @@ export default function Home() {
           }
         />
         <StatCard
-          title="Phiếu Nhập"
+          title="Phiếu nhập"
           value={imports.length}
-          subtitle={totalImportValue > 0 ? `Tổng: ${formatCurrency(totalImportValue)}` : undefined}
+          subtitle={totalImportValue > 0 ? `Tổng giá trị: ${formatCurrency(totalImportValue)}` : undefined}
           color="orange"
           onClick={() => navigate("/nhap-kho")}
           icon={
@@ -243,6 +319,79 @@ export default function Home() {
             </svg>
           }
         />
+        <StatCard
+          title="Tồn kho thấp"
+          value={lowStockMaterials.length}
+          subtitle={`${outOfStockMaterials.length} đã hết hàng`}
+          color="red"
+          onClick={() => navigate("/quan-ly-nguyen-lieu")}
+          icon={
+            <svg className="w-8 h-8 text-white/90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+            </svg>
+          }
+        />
+      </div>
+
+      {/* Insight strip */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3 mb-6">
+        <div className="xl:col-span-2 rounded-xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.03] p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Tiến Độ Xác Nhận Phiếu Nhập</h3>
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
+              {approvedImports}/{imports.length || 0} phiếu đã xác nhận
+            </span>
+          </div>
+
+          <div className="h-3 w-full rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-500"
+              style={{ width: `${imports.length > 0 ? (approvedImports / imports.length) * 100 : 0}%` }}
+            />
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-lg bg-gray-50 dark:bg-white/[0.03] p-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Chờ xác nhận</p>
+              <p className="mt-1 text-lg font-semibold text-orange-600 dark:text-orange-400">{pendingImports}</p>
+            </div>
+            <div className="rounded-lg bg-gray-50 dark:bg-white/[0.03] p-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Đã xác nhận</p>
+              <p className="mt-1 text-lg font-semibold text-emerald-600 dark:text-emerald-400">{approvedImports}</p>
+            </div>
+            <div className="rounded-lg bg-gray-50 dark:bg-white/[0.03] p-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Tổng giá trị nhập</p>
+              <p className="mt-1 text-lg font-semibold text-blue-600 dark:text-blue-400">{formatCurrency(totalImportValue)}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.03] p-5">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Nhóm Nguyên Liệu</h3>
+          {topCategories.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">Chưa có dữ liệu danh mục</p>
+          ) : (
+            <div className="space-y-3">
+              {topCategories.map(([category, count]) => {
+                const ratio = materials.length > 0 ? (count / materials.length) * 100 : 0;
+                return (
+                  <div key={category}>
+                    <div className="mb-1 flex items-center justify-between text-xs">
+                      <span className="font-medium text-gray-700 dark:text-gray-300 truncate pr-2">{category}</span>
+                      <span className="text-gray-500 dark:text-gray-400">{count}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-500"
+                        style={{ width: `${Math.max(8, ratio)}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Main Content Grid */}
@@ -474,7 +623,7 @@ export default function Home() {
           <div className="rounded-xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.03]">
             <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-800">
               <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-                Danh Sách Kho
+                Danh sách kho
               </h3>
               <button
                 onClick={() => navigate("/quan-ly-kho")}
@@ -542,7 +691,7 @@ export default function Home() {
             <svg className="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
             </svg>
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Nhập Kho</span>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Nhập kho</span>
           </button>
           <button
             onClick={() => navigate("/xuat-kho")}
@@ -551,7 +700,7 @@ export default function Home() {
             <svg className="w-6 h-6 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Xuất Kho</span>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Xuất kho</span>
           </button>
           <button
             onClick={() => navigate("/quan-ly-nguyen-lieu")}

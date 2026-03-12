@@ -80,7 +80,6 @@ export default function Materials() {
     categoryId: 1,
     unitId: 1,
     supplierId: 1,
-    stockQuantity: "",
     note: "",
     status: "",
   });
@@ -120,7 +119,6 @@ export default function Materials() {
       setLoading(true);
       const data = await materialService.getAllMaterials();
       setMaterials(data);
-      showToast("Tải dữ liệu thành công!", "success");
     } catch (error: any) {
       let errorMsg = "Unknown error";
       if (error.response) {
@@ -153,7 +151,6 @@ export default function Materials() {
       categoryId: 1,
       unitId: 1,
       supplierId: 1,
-      stockQuantity: "",
       note: "",
       status: "Đang kinh doanh",
     });
@@ -213,7 +210,7 @@ export default function Materials() {
           categoryId: formData.categoryId,
           unitId: formData.unitId,
           supplierId: formData.supplierId,
-          stockQuantity: parseFloat(formData.stockQuantity) || 0,
+          stockQuantity: 0,
           note: formData.note,
           status: formData.status,
         } as any);
@@ -225,7 +222,7 @@ export default function Materials() {
           categoryId: formData.categoryId,
           unitId: formData.unitId,
           supplierId: formData.supplierId,
-          stockQuantity: parseFloat(formData.stockQuantity) || 0,
+          stockQuantity: selectedMaterial.stockQuantity || 0,
           note: formData.note,
           status: formData.status,
         } as any);
@@ -269,7 +266,6 @@ export default function Materials() {
       categoryId: material.categoryId,
       unitId: material.unitId,
       supplierId: material.supplierId,
-      stockQuantity: material.stockQuantity.toString(),
       note: material.note || "",
       status: material.status || "Hoạt động",
     });
@@ -379,8 +375,8 @@ export default function Materials() {
 
   return (
     <>
-      <PageMeta title="Quản Lý Nguyên Liệu" description="Quản lý danh sách nguyên liệu" />
-      <PageBreadcrumb pageTitle="Quản Lý Nguyên Liệu" />
+      <PageMeta title="Quản lý nguyên liệu" description="Quản lý danh sách nguyên liệu" />
+      <PageBreadcrumb pageTitle="Quản lý nguyên liệu" />
 
       {view === "list" && (
         <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
@@ -389,10 +385,10 @@ export default function Materials() {
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Danh Sách Nguyên Liệu
+                  Danh sách nguyên liệu
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  Quản lý danh sách các nguyên liệu của bạn.
+                  Quản lý danh sách các nguyên liệu trong kho
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -803,20 +799,6 @@ export default function Materials() {
                   onChange={handleFormChange}
                   className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   placeholder="1"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Số Lượng Tồn
-                </label>
-                <input
-                  type="number"
-                  name="stockQuantity"
-                  value={formData.stockQuantity}
-                  onChange={handleFormChange}
-                  className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                  placeholder="0"
                 />
               </div>
 

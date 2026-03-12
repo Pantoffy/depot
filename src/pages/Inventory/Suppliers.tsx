@@ -7,7 +7,7 @@ import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
 import { supplierService, Supplier } from "../../services/supplierService";
 
-// Dropdown Action Component
+// Component: Dropdown hành động (View/Edit/Delete nhà cung cấp)
 const ActionDropdown = ({ 
   onView, 
   onEdit, 
@@ -92,7 +92,6 @@ export default function Suppliers() {
       console.log("Suppliers data:", data);
       data.forEach((s) => console.log(`Supplier ${s.name}: status = "${s.status}" (type: ${typeof s.status})`));
       setSuppliers(data);
-      showToast("Tải dữ liệu thành công!", "success");
     } catch (error: any) {
       let errorMsg = "Unknown error";
       
@@ -305,8 +304,8 @@ export default function Suppliers() {
 
   return (
     <>
-      <PageMeta title="Quản Lý Nhà Cung Cấp" description="Quản lý danh sách nhà cung cấp" />
-      <PageBreadcrumb pageTitle="Quản Lý Nhà Cung Cấp" />
+      <PageMeta title="Quản lý nhà cung cấp" description="Quản lý danh sách nhà cung cấp" />
+      <PageBreadcrumb pageTitle="Quản lý nhà cung cấp" />
 
       {view === "list" && (
         <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
@@ -315,7 +314,7 @@ export default function Suppliers() {
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Danh Sách Nhà Cung Cấp
+                  Danh sách nhà cung cấp
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   Quản lý danh sách các nhà cung cấp của bạn.

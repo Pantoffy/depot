@@ -9,10 +9,6 @@ import {
   GridIcon,
   HorizontaLDots,
   ListIcon,
-  PageIcon,
-  PieChartIcon,
-  PlugInIcon,
-  TableIcon,
 } from "../icons";
 import { useSidebar } from "../context/SidebarContext";
 
@@ -26,13 +22,7 @@ type NavItem = {
 const navItems: NavItem[] = [
 {
     icon: <GridIcon />,
-    name: "Dashboard",
-    subItems: [{ name: "Tổng quan", path: "/", pro: false }],
-  },
-  {
-    icon: <CalenderIcon />,
-    name: "Lịch",
-    path: "/calendar",
+    name: "Tổng quan", path: "/",
   },
   {
     name: "Hoạt động kho",
@@ -52,15 +42,10 @@ const navItems: NavItem[] = [
       { name: "Quản lý kho", path: "/quan-ly-kho", pro: false },
     ],
   },
-];
-
-const othersItems: NavItem[] = [
   {
-    icon: <PlugInIcon />,
-    name: "Xác thực",
-    subItems: [
-      { name: "Đăng nhập", path: "/signin", pro: false },
-    ],
+    icon: <CalenderIcon />,
+    name: "Lịch",
+    path: "/calendar",
   },
 ];
 
@@ -85,8 +70,8 @@ const AppSidebar: React.FC = () => {
 
   useEffect(() => {
     let submenuMatched = false;
-    ["main", "others"].forEach((menuType) => {
-      const items = menuType === "main" ? navItems : othersItems;
+    ["main"].forEach((menuType) => {
+      const items = navItems;
       items.forEach((nav, index) => {
         if (nav.subItems) {
           nav.subItems.forEach((subItem) => {
@@ -321,22 +306,6 @@ const AppSidebar: React.FC = () => {
                 )}
               </h2>
               {renderMenuItems(navItems, "main")}
-            </div>
-            <div className="">
-              <h2
-                className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
-                  !isExpanded && !isHovered
-                    ? "lg:justify-center"
-                    : "justify-start"
-                }`}
-              >
-                {isExpanded || isHovered || isMobileOpen ? (
-                  "Others"
-                ) : (
-                  <HorizontaLDots />
-                )}
-              </h2>
-              {renderMenuItems(othersItems, "others")}
             </div>
           </div>
         </nav>

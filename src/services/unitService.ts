@@ -298,7 +298,9 @@ export const unitService = {
           console.error("Network Error: Cannot connect to server");
         }
       }
-      throw error;
+      // Fallback to default units when API is not available
+      console.warn("Using default units (backend API not available)");
+      return DEFAULT_UNITS;
     }
   },
 
