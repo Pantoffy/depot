@@ -10,8 +10,9 @@ import AppLayout from "./layout/AppLayout";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import Home from "./pages/Dashboard/Home";
 import Import from "./pages/Forms/Import";
-import DonDatHang from "./pages/Forms/DonDatHang";
-import XuatKho from "./pages/Forms/XuatKho";
+import PurchaseOrder from "./pages/Forms/PurchaseOrder";
+import Export from "./pages/Forms/Export";
+import StockCheck from "./pages/Forms/StockCheck";
 import Materials from "./pages/Inventory/Materials";
 import Suppliers from "./pages/Inventory/Suppliers";
 import Warehouse from "./pages/Inventory/Warehouse";
@@ -35,8 +36,9 @@ export default function App() {
             {/* Forms */}
             <Route path="/form-elements" element={<FormElements />} />
             <Route path="/nhap-kho" element={<Import />} />
-            <Route path="/xuat-kho" element={<XuatKho />} />
-            <Route path="/don-dat-hang" element={<DonDatHang />} />
+            <Route path="/xuat-kho" element={<Export />} />
+            <Route path="/kiem-ke" element={<StockCheck />} />
+            <Route path="/don-dat-hang" element={<PurchaseOrder />} />
 
             {/* Inventory Management */}
             <Route path="/quan-ly-nguyen-lieu" element={<Materials />} />

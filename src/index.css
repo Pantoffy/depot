@@ -339,6 +339,223 @@ span.flatpickr-weekday,
   fill: none !important;
 }
 
+.po-expected-delivery-input {
+  width: 100%;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.5rem;
+  padding: 0.625rem 2.75rem 0.625rem 1rem;
+  background: linear-gradient(90deg, #eff6ff 0%, #ecfeff 100%);
+  color: #111827;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.po-expected-delivery-input::placeholder {
+  color: #6b7280;
+}
+
+.po-expected-delivery-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.dark .po-expected-delivery-input {
+  border-color: rgba(59, 130, 246, 0.35);
+  background: linear-gradient(
+    90deg,
+    rgba(59, 130, 246, 0.14) 0%,
+    rgba(6, 182, 212, 0.14) 100%
+  );
+  color: #f8fafc;
+}
+
+.dark .po-expected-delivery-input::placeholder {
+  color: #94a3b8;
+}
+
+.form-tone-sync input:not([type="checkbox"]):not([type="radio"]):not(
+    .flatpickr-input
+  ),
+.form-tone-sync select,
+.form-tone-sync textarea {
+  border-color: #bfdbfe !important;
+  background: linear-gradient(90deg, #eff6ff 0%, #ecfeff 100%) !important;
+  color: #111827;
+}
+
+.form-tone-sync input::placeholder,
+.form-tone-sync textarea::placeholder {
+  color: #6b7280;
+}
+
+.form-tone-sync input:focus,
+.form-tone-sync select:focus,
+.form-tone-sync textarea:focus {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
+}
+
+.dark .form-tone-sync input:not([type="checkbox"]):not([type="radio"]):not(
+    .flatpickr-input
+  ),
+.dark .form-tone-sync select,
+.dark .form-tone-sync textarea {
+  border-color: rgba(59, 130, 246, 0.35) !important;
+  background: linear-gradient(
+    90deg,
+    rgba(59, 130, 246, 0.14) 0%,
+    rgba(6, 182, 212, 0.14) 100%
+  ) !important;
+  color: #f8fafc;
+}
+
+.dark .form-tone-sync input::placeholder,
+.dark .form-tone-sync textarea::placeholder {
+  color: #94a3b8;
+}
+
+.module-surface {
+  box-shadow: 0 18px 32px -26px rgba(15, 23, 42, 0.45);
+}
+
+.dark .module-surface {
+  box-shadow: 0 20px 36px -26px rgba(2, 6, 23, 0.8);
+}
+
+.module-head {
+  background: linear-gradient(90deg, rgba(239, 246, 255, 0.75) 0%, #ffffff 70%);
+}
+
+.dark .module-head {
+  background: linear-gradient(
+    90deg,
+    rgba(30, 41, 59, 0.55) 0%,
+    rgba(15, 23, 42, 0.15) 70%
+  );
+}
+
+.module-primary-btn {
+  border-radius: 0.75rem;
+  background: linear-gradient(135deg, #2563eb 0%, #0891b2 100%);
+  color: #ffffff;
+  box-shadow: 0 10px 20px -14px rgba(37, 99, 235, 0.9);
+}
+
+.module-primary-btn:hover {
+  filter: brightness(1.05);
+}
+
+.module-secondary-btn {
+  border-radius: 0.75rem;
+  box-shadow: 0 8px 16px -14px rgba(15, 23, 42, 0.5);
+}
+
+.module-ghost-btn {
+  border-radius: 0.75rem;
+}
+
+.module-view {
+  animation: module-fade-in 0.26s ease-out;
+}
+
+@keyframes module-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.module-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.module-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.module-table tbody tr:nth-child(even) {
+  background-color: rgba(248, 250, 252, 0.7);
+}
+
+.dark .module-table tbody tr:nth-child(even) {
+  background-color: rgba(30, 41, 59, 0.2);
+}
+
+.module-table tbody tr:hover {
+  background-color: rgba(219, 234, 254, 0.45) !important;
+}
+
+.dark .module-table tbody tr:hover {
+  background-color: rgba(59, 130, 246, 0.14) !important;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.status-draft {
+  background-color: #f3f4f6;
+  color: #374151;
+}
+
+.status-pending {
+  background-color: #ffedd5;
+  color: #c2410c;
+}
+
+.status-confirmed {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}
+
+.status-delivered {
+  background-color: #d1fae5;
+  color: #047857;
+}
+
+.status-cancelled {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
+.dark .status-draft {
+  background-color: rgba(107, 114, 128, 0.25);
+  color: #d1d5db;
+}
+
+.dark .status-pending {
+  background-color: rgba(249, 115, 22, 0.2);
+  color: #fdba74;
+}
+
+.dark .status-confirmed {
+  background-color: rgba(59, 130, 246, 0.22);
+  color: #93c5fd;
+}
+
+.dark .status-delivered {
+  background-color: rgba(16, 185, 129, 0.22);
+  color: #6ee7b7;
+}
+
+.dark .status-cancelled {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
 .flatpickr-calendar.static {
   @apply right-0;
 }

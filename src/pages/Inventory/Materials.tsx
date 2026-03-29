@@ -306,6 +306,12 @@ export default function Materials() {
   const totalPages = Math.ceil(filteredMaterials.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedMaterials = filteredMaterials.slice(startIndex, startIndex + itemsPerPage);
+  const summaryStats = {
+    totalMaterials: materials.length,
+    activeMaterials: materials.filter((m) => m.status === "Đang kinh doanh").length,
+    inactiveMaterials: materials.filter((m) => m.status !== "Đang kinh doanh").length,
+    totalStock: materials.reduce((sum, m) => sum + Number(m.stockQuantity || 0), 0),
+  };
 
   const formatDate = (dateStr: string | undefined) => {
     if (!dateStr) return "-";
@@ -379,6 +385,26 @@ export default function Materials() {
       <PageBreadcrumb pageTitle="Quản lý nguyên liệu" />
 
       {view === "list" && (
+        <>
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4 dark:border-sky-500/30 dark:from-sky-500/10 dark:to-gray-900">
+            <p className="text-xs font-medium text-sky-700 dark:text-sky-300">Tổng nguyên liệu</p>
+            <p className="mt-2 text-2xl font-semibold text-sky-900 dark:text-sky-200">{summaryStats.totalMaterials}</p>
+          </div>
+          <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 dark:border-emerald-500/30 dark:from-emerald-500/10 dark:to-gray-900">
+            <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Đang kinh doanh</p>
+            <p className="mt-2 text-2xl font-semibold text-emerald-900 dark:text-emerald-200">{summaryStats.activeMaterials}</p>
+          </div>
+          <div className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-white p-4 dark:border-rose-500/30 dark:from-rose-500/10 dark:to-gray-900">
+            <p className="text-xs font-medium text-rose-700 dark:text-rose-300">Ngừng kinh doanh</p>
+            <p className="mt-2 text-2xl font-semibold text-rose-900 dark:text-rose-200">{summaryStats.inactiveMaterials}</p>
+          </div>
+          <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-4 dark:border-indigo-500/30 dark:from-indigo-500/10 dark:to-gray-900">
+            <p className="text-xs font-medium text-indigo-700 dark:text-indigo-300">Tổng tồn kho</p>
+            <p className="mt-2 text-2xl font-semibold text-indigo-900 dark:text-indigo-200">{summaryStats.totalStock.toLocaleString("vi-VN")}</p>
+          </div>
+        </div>
+
         <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
           {/* Header Section */}
           <div className="p-5 lg:p-6 border-b border-gray-200 dark:border-gray-800">
@@ -432,7 +458,7 @@ export default function Materials() {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:border-gray-600 transition-all duration-200"
+                  className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                 />
               </div>
               <div className="relative">
@@ -687,10 +713,11 @@ export default function Materials() {
             </div>
           )}
         </div>
+        </>
       )}
 
       {(view === "create" || view === "edit") && (
-        <div className="space-y-6">
+        <div className="module-view form-tone-sync space-y-6">
           <button
             onClick={() => {
               resetForm();
@@ -704,7 +731,7 @@ export default function Materials() {
             Quay Lại
           </button>
 
-          <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03] p-5 lg:p-6">
+          <div className="module-surface rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03] p-5 lg:p-6">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">
               {view === "create" ? "Thêm Nguyên Liệu Mới" : "Chỉnh Sửa Nguyên Liệu"}
             </h2>
@@ -859,146 +886,108 @@ export default function Materials() {
         </div>
       )}
 
-      {view === "detail" && selectedMaterial && (
-        <div className="space-y-6">
-          <button
-            onClick={() => setView("list")}
-            className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-            </svg>
-            Quay Lại
-          </button>
+      {view === "detail" && selectedMaterial && (() => {
+        const isActive = selectedMaterial.status === "Đang kinh doanh";
+        const warehouseNames = getWarehouseNames(selectedMaterial.id);
+        const warehouseCount = warehouseNames === "-" ? 0 : warehouseNames.split(",").length;
 
-          <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03] p-5 lg:p-6">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">
-              {selectedMaterial.code} - {selectedMaterial.name}
-            </h2>
+        return (
+          <div className="module-view space-y-4">
+            <button
+              onClick={() => setView("list")}
+              className="inline-flex w-fit items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+              </svg>
+              Quay Lại
+            </button>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Mã Nguyên Liệu
-                </p>
-                <p className="text-sm font-medium text-gray-900 dark:text-white mt-1">
-                  {selectedMaterial.code}
-                </p>
-              </div>
+            <div className="rounded-2xl border border-sky-200 bg-gradient-to-r from-sky-50 via-white to-emerald-50 p-5 dark:border-sky-500/30 dark:from-sky-500/10 dark:via-gray-900 dark:to-emerald-500/10">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wider text-sky-700 dark:text-sky-300">Nguyên liệu</p>
+                  <h2 className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">
+                    {selectedMaterial.code} - {selectedMaterial.name}
+                  </h2>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span
+                      className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${
+                        isActive
+                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                          : "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300"
+                      }`}
+                    >
+                      {selectedMaterial.status || "Chưa xác định"}
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-white/70 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-gray-800/70 dark:text-gray-300">
+                      Đơn vị: {getUnitName(selectedMaterial) || "-"}
+                    </span>
+                  </div>
+                </div>
 
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Tên Nguyên Liệu
-                </p>
-                <p className="text-sm font-medium text-gray-900 dark:text-white mt-1">
-                  {selectedMaterial.name}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Danh Mục
-                </p>
-                <p className="text-sm text-gray-900 dark:text-white mt-1">
-                  {selectedMaterial.categoryName}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Đơn Vị
-                </p>
-                <p className="text-sm text-gray-900 dark:text-white mt-1">
-                  {getUnitName(selectedMaterial)}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Nhà Cung Cấp
-                </p>
-                <p className="text-sm text-gray-900 dark:text-white mt-1">
-                  {selectedMaterial.supplier?.name}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Kho
-                </p>
-                <p className="text-sm text-gray-900 dark:text-white mt-1">
-                  {getWarehouseNames(selectedMaterial.id)}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Số Lượng Tồn
-                </p>
-                <p className="text-sm font-medium text-gray-900 dark:text-white mt-1">
-                  {selectedMaterial.stockQuantity}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Trạng Thái
-                </p>
-                <div className="mt-1">
-                  <span className={`inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-medium ${
-                    selectedMaterial.status === "Đang kinh doanh"
-                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                      : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                  }`}>
-                    {selectedMaterial.status}
-                  </span>
+                <div className="flex items-center gap-1 rounded-xl border border-sky-100 bg-white/70 p-1 dark:border-sky-500/20 dark:bg-gray-900/40">
+                  <button
+                    onClick={() => handleEditMaterial(selectedMaterial)}
+                    className="rounded-lg p-2 text-amber-600 transition-colors hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-500/20"
+                    title="Chỉnh sửa"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => handleDeleteMaterial(selectedMaterial.id)}
+                    className="rounded-lg p-2 text-rose-600 transition-colors hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-500/20"
+                    title="Xóa"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
                 </div>
               </div>
 
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Ngày Tạo
-                </p>
-                <p className="text-sm text-gray-900 dark:text-white mt-1">
-                  {formatDate(selectedMaterial.createdTime)}
-                </p>
-              </div>
-
-              {selectedMaterial.note && (
-                <div className="md:col-span-2">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Ghi Chú
-                  </p>
-                  <p className="text-sm text-gray-900 dark:text-white mt-1">
-                    {selectedMaterial.note}
-                  </p>
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-sky-200 bg-white/80 p-3 dark:border-sky-500/30 dark:bg-sky-500/10">
+                  <p className="text-xs font-medium text-sky-700 dark:text-sky-300">Số lượng tồn</p>
+                  <p className="mt-1 text-lg font-semibold text-sky-900 dark:text-sky-100">{Number(selectedMaterial.stockQuantity || 0).toLocaleString("vi-VN")}</p>
                 </div>
-              )}
+                <div className="rounded-xl border border-violet-200 bg-white/80 p-3 dark:border-violet-500/30 dark:bg-violet-500/10">
+                  <p className="text-xs font-medium text-violet-700 dark:text-violet-300">Số kho lưu trữ</p>
+                  <p className="mt-1 text-lg font-semibold text-violet-900 dark:text-violet-100">{warehouseCount}</p>
+                </div>
+                <div className="rounded-xl border border-emerald-200 bg-white/80 p-3 dark:border-emerald-500/30 dark:bg-emerald-500/10">
+                  <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Ngày tạo</p>
+                  <p className="mt-1 text-lg font-semibold text-emerald-900 dark:text-emerald-100">{formatDate(selectedMaterial.createdTime)}</p>
+                </div>
+              </div>
             </div>
 
-            <div className="flex items-center gap-3 mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-              <button
-                onClick={() => handleEditMaterial(selectedMaterial)}
-                className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-all duration-200 shadow-sm"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                Chỉnh Sửa
-              </button>
-              <button
-                onClick={() => handleDeleteMaterial(selectedMaterial.id)}
-                className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-all duration-200 shadow-sm"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                Xóa
-              </button>
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white">Thông tin chi tiết</h3>
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+                  <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Danh mục</p>
+                  <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">{selectedMaterial.categoryName || "-"}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+                  <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Nhà cung cấp</p>
+                  <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">{selectedMaterial.supplier?.name || "-"}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 p-3 dark:border-gray-700 md:col-span-2">
+                  <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Kho đang lưu trữ</p>
+                  <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">{warehouseNames}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 p-3 dark:border-gray-700 md:col-span-2">
+                  <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Ghi chú</p>
+                  <p className="mt-1 text-sm text-gray-900 dark:text-white">{selectedMaterial.note || "Không có ghi chú"}</p>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </>
   );
 }

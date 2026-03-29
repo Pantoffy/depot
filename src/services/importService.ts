@@ -96,7 +96,7 @@ export const importService = {
   createImportReceipt: async (importReceipt: Omit<ImportReceipt, "id" | "createdAt">): Promise<ImportReceipt> => {
     try {
       const response = await apiClient.post<ImportReceipt>("/Add", importReceipt);
-      return response.data;
+      return response.  data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         console.error("Error creating import receipt:", error.message);

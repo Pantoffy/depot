@@ -31,6 +31,7 @@ const navItems: NavItem[] = [
       { name: "Đơn đặt hàng", path: "/don-dat-hang", pro: false },
       { name: "Nhập kho", path: "/nhap-kho", pro: false },
       { name: "Xuất kho", path: "/xuat-kho", pro: false },
+      { name: "Kiểm kê", path: "/kiem-ke", pro: false },
     ],    
   },
   {

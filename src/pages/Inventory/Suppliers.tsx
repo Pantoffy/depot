@@ -296,6 +296,12 @@ export default function Suppliers() {
   const totalPages = Math.ceil(filteredSuppliers.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedSuppliers = filteredSuppliers.slice(startIndex, startIndex + itemsPerPage);
+  const summaryStats = {
+    totalSuppliers: suppliers.length,
+    activeSuppliers: suppliers.filter((s) => s.status === "Hoạt động").length,
+    pausedSuppliers: suppliers.filter((s) => s.status === "Ngừng hợp tác").length,
+    withEmail: suppliers.filter((s) => Boolean((s.email || "").trim())).length,
+  };
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -308,6 +314,26 @@ export default function Suppliers() {
       <PageBreadcrumb pageTitle="Quản lý nhà cung cấp" />
 
       {view === "list" && (
+        <>
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4 dark:border-sky-500/30 dark:from-sky-500/10 dark:to-gray-900">
+            <p className="text-xs font-medium text-sky-700 dark:text-sky-300">Tổng nhà cung cấp</p>
+            <p className="mt-2 text-2xl font-semibold text-sky-900 dark:text-sky-200">{summaryStats.totalSuppliers}</p>
+          </div>
+          <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 dark:border-emerald-500/30 dark:from-emerald-500/10 dark:to-gray-900">
+            <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Hoạt động</p>
+            <p className="mt-2 text-2xl font-semibold text-emerald-900 dark:text-emerald-200">{summaryStats.activeSuppliers}</p>
+          </div>
+          <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4 dark:border-amber-500/30 dark:from-amber-500/10 dark:to-gray-900">
+            <p className="text-xs font-medium text-amber-700 dark:text-amber-300">Ngừng hợp tác</p>
+            <p className="mt-2 text-2xl font-semibold text-amber-900 dark:text-amber-200">{summaryStats.pausedSuppliers}</p>
+          </div>
+          <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-4 dark:border-indigo-500/30 dark:from-indigo-500/10 dark:to-gray-900">
+            <p className="text-xs font-medium text-indigo-700 dark:text-indigo-300">Có email</p>
+            <p className="mt-2 text-2xl font-semibold text-indigo-900 dark:text-indigo-200">{summaryStats.withEmail}</p>
+          </div>
+        </div>
+
         <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
           {/* Header Section */}
           <div className="p-5 lg:p-6 border-b border-gray-200 dark:border-gray-800">
@@ -358,7 +384,7 @@ export default function Suppliers() {
                   placeholder="Tìm kiếm..."
                   value={searchTerm}
                   onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                  className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:border-gray-600 transition-all duration-200"
+                  className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                 />
               </div>
               
@@ -441,7 +467,7 @@ export default function Suppliers() {
                     />
                   </th>
                   <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tên NCC</th>
-                  <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Địa Chỉ</th>
+                  <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Địa chỉ</th>
                   <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">SĐT</th>
                   <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Email</th>
                   <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Trạng Thái</th>
@@ -601,10 +627,11 @@ export default function Suppliers() {
             </div>
           )}
         </div>
+        </>
       )}
 
       {(view === "create" || view === "edit") && (
-        <div className="space-y-6">
+        <div className="module-view form-tone-sync space-y-6">
           <button
             onClick={() => {
               resetForm();
@@ -618,7 +645,7 @@ export default function Suppliers() {
             Quay lại danh sách
           </button>
 
-          <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+          <div className="module-surface rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
             <div className="p-5 lg:p-6 border-b border-gray-200 dark:border-gray-800">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                 {view === "create" ? "Thêm Nhà Cung Cấp Mới" : "Chỉnh Sửa Nhà Cung Cấp"}
@@ -639,7 +666,7 @@ export default function Suppliers() {
                     name="code"
                     value={formData.code}
                     onChange={handleFormChange}
-                    className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+                    className="w-full px-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     placeholder="VD: SUP001"
                   />
                 </div>
@@ -653,7 +680,7 @@ export default function Suppliers() {
                     name="type"
                     value={formData.type}
                     onChange={handleFormChange}
-                    className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+                    className="w-full px-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     placeholder="VD: Supplier"
                   />
                 </div>
@@ -667,21 +694,21 @@ export default function Suppliers() {
                     name="name"
                     value={formData.name}
                     onChange={handleFormChange}
-                    className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+                    className="w-full px-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     placeholder="VD: Công ty TNHH ABC"
                   />
                 </div>
 
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Địa Chỉ
+                    Địa chỉ
                   </label>
                   <input
                     type="text"
                     name="address"
                     value={formData.address}
                     onChange={handleFormChange}
-                    className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+                    className="w-full px-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     placeholder="VD: 123 Đường Lê Lợi, TP HCM"
                   />
                 </div>
@@ -695,7 +722,7 @@ export default function Suppliers() {
                     name="phone"
                     value={formData.phone}
                     onChange={handleFormChange}
-                    className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+                    className="w-full px-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     placeholder="VD: 0287654321"
                   />
                 </div>
@@ -709,7 +736,7 @@ export default function Suppliers() {
                     name="email"
                     value={formData.email}
                     onChange={handleFormChange}
-                    className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+                    className="w-full px-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     placeholder="VD: contact@abc.com.vn"
                   />
                 </div>
@@ -723,7 +750,7 @@ export default function Suppliers() {
                     name="contactPerson"
                     value={formData.contactPerson}
                     onChange={handleFormChange}
-                    className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+                    className="w-full px-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     placeholder="VD: Nguyễn Văn A"
                   />
                 </div>
@@ -737,7 +764,7 @@ export default function Suppliers() {
                     name="title"
                     value={formData.title}
                     onChange={handleFormChange}
-                    className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+                    className="w-full px-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     placeholder="VD: Giám đốc"
                   />
                 </div>
@@ -751,7 +778,7 @@ export default function Suppliers() {
                     name="role"
                     value={formData.role}
                     onChange={handleFormChange}
-                    className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+                    className="w-full px-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     placeholder="VD: Sales"
                   />
                 </div>
@@ -765,7 +792,7 @@ export default function Suppliers() {
                     name="citizenId"
                     value={formData.citizenId}
                     onChange={handleFormChange}
-                    className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+                    className="w-full px-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     placeholder="VD: 123456789"
                   />
                 </div>
@@ -794,171 +821,126 @@ export default function Suppliers() {
         </div>
       )}
 
-      {view === "detail" && selectedSupplier && (
-        <div className="space-y-6">
-          <button
-            onClick={() => setView("list")}
-            className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-            </svg>
-            Quay Lại
-          </button>
+      {view === "detail" && selectedSupplier && (() => {
+        const isActive = selectedSupplier.status === "Hoạt động";
+        const contactCoverage = [selectedSupplier.phone, selectedSupplier.email].filter(Boolean).length;
 
-          <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03] p-5 lg:p-6">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">
-              {selectedSupplier.code} - {selectedSupplier.name}
-            </h2>
+        return (
+          <div className="module-view space-y-4">
+            <button
+              onClick={() => setView("list")}
+              className="inline-flex w-fit items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+              </svg>
+              Quay Lại
+            </button>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Mã NCC
-                </p>
-                <p className="text-sm font-medium text-gray-900 dark:text-white mt-1">
-                  {selectedSupplier.code}
-                </p>
-              </div>
+            <div className="rounded-2xl border border-cyan-200 bg-gradient-to-r from-cyan-50 via-white to-emerald-50 p-5 dark:border-cyan-500/30 dark:from-cyan-500/10 dark:via-gray-900 dark:to-emerald-500/10">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wider text-cyan-700 dark:text-cyan-300">Nhà cung cấp</p>
+                  <h2 className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">
+                    {selectedSupplier.code} - {selectedSupplier.name}
+                  </h2>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span
+                      className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${
+                        isActive
+                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                          : "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300"
+                      }`}
+                    >
+                      {selectedSupplier.status || "Chưa xác định"}
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-white/70 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-gray-800/70 dark:text-gray-300">
+                      Loại: {selectedSupplier.type || "-"}
+                    </span>
+                  </div>
+                </div>
 
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Tên NCC
-                </p>
-                <p className="text-sm font-medium text-gray-900 dark:text-white mt-1">
-                  {selectedSupplier.name}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Loại
-                </p>
-                <p className="text-sm text-gray-900 dark:text-white mt-1">
-                  {selectedSupplier.type || "-"}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Điện Thoại
-                </p>
-                <p className="text-sm text-gray-900 dark:text-white mt-1">
-                  {selectedSupplier.phone || "-"}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Email
-                </p>
-                <p className="text-sm text-gray-900 dark:text-white mt-1">
-                  {selectedSupplier.email || "-"}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Người Liên Hệ
-                </p>
-                <p className="text-sm text-gray-900 dark:text-white mt-1">
-                  {selectedSupplier.contactPerson || "-"}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Chức Danh
-                </p>
-                <p className="text-sm text-gray-900 dark:text-white mt-1">
-                  {selectedSupplier.title || "-"}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Số CCCD
-                </p>
-                <p className="text-sm text-gray-900 dark:text-white mt-1">
-                  {selectedSupplier.citizenId || "-"}
-                </p>
-              </div>
-
-              <div className="md:col-span-2">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Địa Chỉ
-                </p>
-                <p className="text-sm text-gray-900 dark:text-white mt-1">
-                  {selectedSupplier.address || "-"}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Vai Trò
-                </p>
-                <p className="text-sm text-gray-900 dark:text-white mt-1">
-                  {selectedSupplier.role || "-"}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Trạng Thái
-                </p>
-                <div className="mt-1">
-                  <span className={`inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-medium ${
-                    selectedSupplier.status === "Hoạt động"
-                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                      : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                  }`}>
-                    {selectedSupplier.status}
-                  </span>
+                <div className="flex items-center gap-1 rounded-xl border border-cyan-100 bg-white/70 p-1 dark:border-cyan-500/20 dark:bg-gray-900/40">
+                  <button
+                    onClick={() => handleEditSupplier(selectedSupplier)}
+                    className="rounded-lg p-2 text-amber-600 transition-colors hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-500/20"
+                    title="Chỉnh sửa"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => handleToggleStatus(selectedSupplier)}
+                    className="rounded-lg p-2 text-emerald-600 transition-colors hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-500/20"
+                    title="Đổi trạng thái"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => selectedSupplier.id && handleDeleteSupplier(selectedSupplier.id)}
+                    className="rounded-lg p-2 text-rose-600 transition-colors hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-500/20"
+                    title="Xóa"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
                 </div>
               </div>
 
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Ngày Tạo
-                </p>
-                <p className="text-sm text-gray-900 dark:text-white mt-1">
-                  {selectedSupplier.createdTime ? formatDate(selectedSupplier.createdTime) : "-"}
-                </p>
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-cyan-200 bg-white/80 p-3 dark:border-cyan-500/30 dark:bg-cyan-500/10">
+                  <p className="text-xs font-medium text-cyan-700 dark:text-cyan-300">Liên hệ khả dụng</p>
+                  <p className="mt-1 text-lg font-semibold text-cyan-900 dark:text-cyan-100">{contactCoverage}/2</p>
+                </div>
+                <div className="rounded-xl border border-amber-200 bg-white/80 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+                  <p className="text-xs font-medium text-amber-700 dark:text-amber-300">Người liên hệ</p>
+                  <p className="mt-1 text-lg font-semibold text-amber-900 dark:text-amber-100">{selectedSupplier.contactPerson || "-"}</p>
+                </div>
+                <div className="rounded-xl border border-emerald-200 bg-white/80 p-3 dark:border-emerald-500/30 dark:bg-emerald-500/10">
+                  <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Ngày tạo</p>
+                  <p className="mt-1 text-lg font-semibold text-emerald-900 dark:text-emerald-100">{selectedSupplier.createdTime ? formatDate(selectedSupplier.createdTime) : "-"}</p>
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-              <button
-                onClick={() => handleEditSupplier(selectedSupplier)}
-                className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-all duration-200 shadow-sm"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                Chỉnh Sửa
-              </button>
-              <button
-                onClick={() => handleToggleStatus(selectedSupplier)}
-                className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-all duration-200 shadow-sm"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                Đổi Trạng Thái
-              </button>
-              <button
-                onClick={() => selectedSupplier.id && handleDeleteSupplier(selectedSupplier.id)}
-                className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-all duration-200 shadow-sm"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                Xóa
-              </button>
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white">Thông tin chi tiết</h3>
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+                  <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Điện thoại</p>
+                  <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">{selectedSupplier.phone || "-"}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+                  <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Email</p>
+                  <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">{selectedSupplier.email || "-"}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+                  <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Chức danh</p>
+                  <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">{selectedSupplier.title || "-"}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+                  <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Vai trò</p>
+                  <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">{selectedSupplier.role || "-"}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 p-3 dark:border-gray-700 md:col-span-2">
+                  <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Địa chỉ</p>
+                  <p className="mt-1 text-sm text-gray-900 dark:text-white">{selectedSupplier.address || "-"}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 p-3 dark:border-gray-700 md:col-span-2">
+                  <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Số CCCD</p>
+                  <p className="mt-1 text-sm text-gray-900 dark:text-white">{selectedSupplier.citizenId || "-"}</p>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </>
   );
 }
+
+

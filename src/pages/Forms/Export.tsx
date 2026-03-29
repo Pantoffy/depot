@@ -1,17 +1,18 @@
 "use client";
-import { importService } from "../../services/importService";
-import { materialService } from "../../services/materialService";
-import { supplierService } from "../../services/supplierService";
-import { unitService } from "../../services/unitService";
-import { warehouseService } from "../../services/warehouseService";
-import { useState, useEffect, useRef } from "react";
+
+import axios from "axios";
+import { useEffect, useRef, useState } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
+import { exportService } from "../../services/exportService";
+import { inventoryService } from "../../services/inventoryService";
+import { materialService } from "../../services/materialService";
+import { unitService } from "../../services/unitService";
+import { warehouseService } from "../../services/warehouseService";
 
-// Interface: Hàng hóa trong phiếu nhập
-interface Material {
+interface MaterialLine {
   stt: number;
   id: string;
   materialId: number;
@@ -23,59 +24,43 @@ interface Material {
   donGia: number;
 }
 
-// Interface: Phiếu nhập kho
 interface Receipt {
   id: string;
   ngayTao: string;
   soPhieu: string;
-  supplierId?: number;
-  tenNCC: string;
-  soHoaDonNCC?: string;
+  receiverName: string;
   warehouseId?: number;
   kho: string;
   tongTien: number;
+  lyDo: string;
   soChungTu?: string;
   trangThai: string;
-  materials: Material[];
+  materials: MaterialLine[];
 }
 
-// Page: Quản lý nhập kho
-export default function NhapKho() {
-  // State: Danh sách phiếu nhập
+export default function XuatKho() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
-  // State: Trạng thái loading
   const [loading, setLoading] = useState(false);
-  // State: View hiện tại
   const [view, setView] = useState<"list" | "create" | "edit" | "detail">(
     "list",
   );
-  // State: Từ khóa tìm kiếm
   const [searchTerm, setSearchTerm] = useState("");
-  // State: Phiếu được chọn
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
-  // State: Sắp xếp theo trường nào
   const [sortBy, setSortBy] = useState<"ngayTao" | "tongTien">("ngayTao");
-  // State: Thứ tự sắp xếp (tăng/giảm)
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filters, setFilters] = useState({ kho: "", trangThai: "" });
-  // State: Danh sách hàng hóa có sẵn
+
   const [availableMaterials, setAvailableMaterials] = useState<any[]>([]);
+  const [availableWarehouses, setAvailableWarehouses] = useState<any[]>([]);
+  const [availableUnits, setAvailableUnits] = useState<any[]>([]);
+
   const [materialSearchTerm, setMaterialSearchTerm] = useState("");
   const [isMaterialDropdownOpen, setIsMaterialDropdownOpen] = useState(false);
   const materialDropdownRef = useRef<HTMLDivElement>(null);
 
-  const [availableSuppliers, setAvailableSuppliers] = useState<any[]>([]);
-  const [supplierSearchTerm, setSupplierSearchTerm] = useState("");
-  const [isSupplierDropdownOpen, setIsSupplierDropdownOpen] = useState(false);
-  const supplierDropdownRef = useRef<HTMLDivElement>(null);
-  const [selectedSupplierId, setSelectedSupplierId] = useState<number | null>(
-    null,
-  );
-
-  const [availableWarehouses, setAvailableWarehouses] = useState<any[]>([]);
   const [warehouseSearchTerm, setWarehouseSearchTerm] = useState("");
   const [isWarehouseDropdownOpen, setIsWarehouseDropdownOpen] = useState(false);
   const warehouseDropdownRef = useRef<HTMLDivElement>(null);
@@ -83,9 +68,29 @@ export default function NhapKho() {
     null,
   );
 
-  const [availableUnits, setAvailableUnits] = useState<any[]>([]);
+  const [formData, setFormData] = useState({
+    soPhieu: "",
+    ngayTao: new Date().toISOString().split("T")[0],
+    nguoiNhan: "",
+    soChungTu: "",
+    kho: "",
+    lyDo: "Bán hàng",
+  });
 
-  // Close dropdown when clicking outside
+  const [materials, setMaterials] = useState<MaterialLine[]>([]);
+  const [materialInput, setMaterialInput] = useState({
+    selectedMaterialId: "",
+    maHang: "",
+    tenHang: "",
+    donVi: "",
+    unitId: 1,
+    soLuong: "",
+    donGia: "",
+  });
+  const [editingMaterialId, setEditingMaterialId] = useState<string | null>(
+    null,
+  );
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -95,18 +100,13 @@ export default function NhapKho() {
         setIsMaterialDropdownOpen(false);
       }
       if (
-        supplierDropdownRef.current &&
-        !supplierDropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsSupplierDropdownOpen(false);
-      }
-      if (
         warehouseDropdownRef.current &&
         !warehouseDropdownRef.current.contains(event.target as Node)
       ) {
         setIsWarehouseDropdownOpen(false);
       }
     };
+
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
@@ -114,30 +114,19 @@ export default function NhapKho() {
   useEffect(() => {
     fetchUnits();
     fetchMaterials().then((mats) => {
-      fetchImportReceipts(mats);
+      fetchExportReceipts(mats);
     });
-    fetchSuppliers();
     fetchWarehouses();
   }, []);
 
   const fetchMaterials = async () => {
     try {
       const data = await materialService.getAllMaterials();
-      console.log("Fetched materials:", data); // Debug log to check the structure of fetched materials
       setAvailableMaterials(data || []);
       return data || [];
     } catch (err) {
-      console.error("Lỗi tải danh sách vật tư", err);
+      console.error("Lỗi tải danh sách nguyên liệu", err);
       return [];
-    }
-  };
-
-  const fetchSuppliers = async () => {
-    try {
-      const data = await supplierService.getAllSuppliers();
-      setAvailableSuppliers(data || []);
-    } catch (err) {
-      console.error("Lỗi tải danh sách nhà cung cấp", err);
     }
   };
 
@@ -153,89 +142,207 @@ export default function NhapKho() {
   const fetchUnits = async () => {
     try {
       const data = await unitService.getAllUnits();
-      console.log("Fetched units:", data);
       setAvailableUnits(data || []);
     } catch (err) {
       console.error("Lỗi tải danh sách đơn vị", err);
     }
   };
 
-  const fetchImportReceipts = async (mats?: any[]) => {
+  const getUnitNameById = (unitId?: number, fallback?: string) => {
+    if (!unitId) return fallback || "kg";
+    const unit = availableUnits.find(
+      (u: any) => Number(u.id) === Number(unitId),
+    );
+    return unit?.name || fallback || "kg";
+  };
+
+  const mapExportReceipt = (item: any, materialsList: any[]): Receipt => {
+    const rawDetails =
+      item.exportReceiptDetails ||
+      item.exportReceiptDetail ||
+      item.details ||
+      [];
+
+    const mappedMaterials: MaterialLine[] = rawDetails.map(
+      (detail: any, idx: number) => {
+        const mat = materialsList.find(
+          (m: any) =>
+            Number(m.id) ===
+            Number(
+              detail.materialId || detail.material?.id || detail.materialID,
+            ),
+        );
+        const unitName =
+          detail.unit?.name ||
+          getUnitNameById(
+            detail.unitId || detail.unit?.id,
+            mat?.unitName || mat?.unit?.name,
+          ) ||
+          "kg";
+
+        const quantity = Number(detail.quantity ?? detail.soLuong ?? 0);
+        const unitPrice = Number(detail.unitPrice ?? detail.donGia ?? 0);
+
+        return {
+          stt: idx + 1,
+          id: String(detail.id ?? `row_${idx}`),
+          materialId: Number(
+            detail.materialId || detail.material?.id || detail.materialID || 0,
+          ),
+          unitId: Number(detail.unitId || detail.unit?.id || mat?.unitId || 1),
+          maHang:
+            detail.material?.code || detail.materialCode || mat?.code || "",
+          tenHang:
+            detail.material?.name || detail.materialName || mat?.name || "",
+          donVi: unitName,
+          soLuong: quantity,
+          donGia: unitPrice,
+        };
+      },
+    );
+
+    const totalFromDetails = mappedMaterials.reduce(
+      (sum, m) => sum + m.soLuong * m.donGia,
+      0,
+    );
+
+    return {
+      id: String(item.id),
+      soPhieu: item.receiptNumber || item.code || item.soPhieu || "",
+      ngayTao: item.exportDate || item.ngayTao || item.createdAt,
+      receiverName: item.receiverName || item.nguoiNhan || "",
+      warehouseId: item.warehouseId || item.warehouse?.id,
+      kho: item.warehouse?.name || item.warehouseName || item.kho || "",
+      tongTien: Number(
+        item.totalAmount || item.tongTien || totalFromDetails || 0,
+      ),
+      soChungTu: item.documentNo || item.soChungTu || "",
+      lyDo: item.reason || item.lyDo || "",
+      trangThai: normalizeReceiptStatus(
+        item.status || item.trangThai || "Pending",
+      ),
+      materials: mappedMaterials,
+    };
+  };
+
+  const fetchExportReceiptDetail = async (
+    receiptId: string | number,
+    mats?: any[],
+  ) => {
+    const data = await exportService.getExportReceiptById(Number(receiptId));
+    const materialsList = mats || availableMaterials;
+    return mapExportReceipt(data, materialsList);
+  };
+
+  const fetchExportReceipts = async (mats?: any[]) => {
     try {
       setLoading(true);
-      const data = await importService.getAllImportReceipts();
+      const data = await exportService.getAllExportReceipts();
       const materialsList = mats || availableMaterials;
-      setReceipts(
-        (data || []).map((item: any) => ({
-          id: String(item.id),
-          soPhieu: item.code,
-          ngayTao: item.importTime,
-          supplierId: item.supplierId || item.supplier?.id,
-          tenNCC: item.supplier?.name || "",
-          soHoaDonNCC: item.supplierInvoiceNo,
-          warehouseId: item.warehouseId || item.warehouse?.id,
-          kho: item.warehouse?.name || "",
-          tongTien: item.totalAmount || 0,
-          soChungTu: item.documentNo,
-          trangThai: item.status,
-          materials: (item.importReceiptDetails || []).map(
-            (detail: any, idx: number) => {
-              const mat = materialsList.find(
-                (m: any) => m.id === detail.materialId,
-              );
-              return {
-                stt: idx + 1,
-                id: String(detail.id),
-                materialId: detail.materialId || 0,
-                unitId: detail.unitId || 1,
-                maHang: detail.material?.code || mat?.code || "",
-                tenHang: detail.material?.name || mat?.name || "",
-                donVi: detail.unit?.name || mat?.unitName || "kg",
-                soLuong: detail.quantity,
-                donGia: detail.unitPrice,
-              };
-            },
-          ),
-        })),
+
+      const mappedReceipts: Receipt[] = (data || []).map((item: any) =>
+        mapExportReceipt(item, materialsList),
       );
+
+      setReceipts(mappedReceipts);
     } catch (err) {
-      showToast("Lỗi tải dữ liệu phiếu nhập", "error");
+      showToast("Lỗi tải dữ liệu phiếu xuất", "error");
     } finally {
       setLoading(false);
     }
   };
 
-  const [formData, setFormData] = useState({
-    soPhieu: "",
-    ngayTao: new Date().toISOString().split("T")[0],
-    tenNCC: "",
-    soHoaDonNCC: "",
-    kho: "",
-    soChungTu: "",
-  });
+  const normalizeReceiptStatus = (status: string) => {
+    const normalized = (status || "").trim().toLowerCase();
+    if (
+      normalized === "approved" ||
+      normalized === "confirmed" ||
+      normalized === "đã xác nhận" ||
+      normalized === "da xac nhan"
+    ) {
+      return "Approved";
+    }
+    if (
+      normalized === "draft" ||
+      normalized === "nháp" ||
+      normalized === "nhap"
+    ) {
+      return "Draft";
+    }
+    if (
+      normalized === "cancelled" ||
+      normalized === "canceled" ||
+      normalized === "đã hủy" ||
+      normalized === "da huy"
+    ) {
+      return "Cancelled";
+    }
+    return "Pending";
+  };
 
-  const [materials, setMaterials] = useState<Material[]>([]);
-  const [materialInput, setMaterialInput] = useState({
-    selectedMaterialId: "",
-    maHang: "",
-    tenHang: "",
-    donVi: "",
-    unitId: 1,
-    soLuong: "",
-    donGia: "",
-  });
-  const [editingMaterialId, setEditingMaterialId] = useState<string | null>(
-    null,
-  );
+  const extractApiErrorMessage = (error: unknown) => {
+    if (!axios.isAxiosError(error)) {
+      return "Lỗi lưu phiếu xuất";
+    }
+
+    const data = error.response?.data as any;
+
+    if (typeof data === "string" && data.trim()) {
+      return data;
+    }
+
+    if (data?.errors && typeof data.errors === "object") {
+      const flat = Object.values(data.errors)
+        .flatMap((v: any) => (Array.isArray(v) ? v : [v]))
+        .filter(Boolean)
+        .map(String);
+      if (flat.length > 0) {
+        return flat.join("; ");
+      }
+    }
+
+    if (typeof data?.title === "string" && data.title.trim()) {
+      return data.title;
+    }
+
+    return error.message || "Lỗi lưu phiếu xuất";
+  };
+
+  const isReceiptConfirmed = (status: string) => {
+    return normalizeReceiptStatus(status) === "Approved";
+  };
+
+  const isReceiptCancelled = (status: string) => {
+    return normalizeReceiptStatus(status) === "Cancelled";
+  };
+
+  const isReceiptDraft = (status: string) => {
+    return normalizeReceiptStatus(status) === "Draft";
+  };
+
+  const getReceiptStatusLabel = (status: string) => {
+    if (isReceiptConfirmed(status)) return "Đã xác nhận";
+    if (isReceiptDraft(status)) return "Đang soạn thảo";
+    if (isReceiptCancelled(status)) return "Đã hủy";
+    return "Chờ xác nhận";
+  };
+
+  const getReceiptStatusClass = (status: string) => {
+    const normalized = normalizeReceiptStatus(status);
+    if (normalized === "Approved") return "status-confirmed";
+    if (normalized === "Draft") return "status-draft";
+    if (normalized === "Cancelled") return "status-cancelled";
+    return "status-pending";
+  };
 
   const resetForm = () => {
     setFormData({
       soPhieu: "",
       ngayTao: new Date().toISOString().split("T")[0],
-      tenNCC: "",
-      soHoaDonNCC: "",
-      kho: "",
+      nguoiNhan: "",
       soChungTu: "",
+      kho: "",
+      lyDo: "Bán hàng",
     });
     setMaterials([]);
     setMaterialInput({
@@ -248,80 +355,56 @@ export default function NhapKho() {
       donGia: "",
     });
     setEditingMaterialId(null);
-    setMaterialSearchTerm("");
-    setSelectedSupplierId(null);
-    setSupplierSearchTerm("");
     setSelectedWarehouseId(null);
     setWarehouseSearchTerm("");
-  };
-
-  const handleSelectSupplier = (supplierId: number | null) => {
-    if (!supplierId) {
-      setSelectedSupplierId(null);
-      setFormData({ ...formData, tenNCC: "" });
-      setSupplierSearchTerm("");
-      return;
-    }
-
-    const supplier = selectableSuppliers.find((s: any) => s.id === supplierId);
-    if (supplier) {
-      setSelectedSupplierId(supplierId);
-      setFormData({ ...formData, tenNCC: supplier.name || "" });
-      setSupplierSearchTerm("");
-      setIsSupplierDropdownOpen(false);
-    }
+    setMaterialSearchTerm("");
   };
 
   const handleSelectWarehouse = (warehouseId: number | null) => {
     if (!warehouseId) {
       setSelectedWarehouseId(null);
-      setFormData({ ...formData, kho: "" });
+      setFormData((prev) => ({ ...prev, kho: "" }));
       setWarehouseSearchTerm("");
       return;
     }
+
     const warehouse = availableWarehouses.find(
-      (w: any) => w.id === warehouseId,
+      (w: any) => Number(w.id) === Number(warehouseId),
     );
-    if (warehouse) {
-      setSelectedWarehouseId(warehouseId);
-      setFormData({ ...formData, kho: warehouse.name || "" });
-      setWarehouseSearchTerm("");
-      setIsWarehouseDropdownOpen(false);
-    }
+    if (!warehouse) return;
+
+    setSelectedWarehouseId(warehouseId);
+    setFormData((prev) => ({ ...prev, kho: warehouse.name || "" }));
+    setWarehouseSearchTerm("");
+    setIsWarehouseDropdownOpen(false);
   };
 
   const handleSelectMaterial = (materialId: string) => {
     if (!materialId) {
-      setMaterialInput({
+      setMaterialInput((prev) => ({
+        ...prev,
         selectedMaterialId: "",
         maHang: "",
         tenHang: "",
         donVi: "",
         unitId: 1,
-        soLuong: "",
-        donGia: "",
-      });
+      }));
       return;
     }
+
     const mat = availableMaterials.find(
       (m: any) => String(m.id) === materialId,
     );
-    if (mat) {
-      console.log("Selected material:", mat);
-      // Find unit name from availableUnits using unitId
-      const unit = availableUnits.find((u: any) => u.id === mat.unitId);
-      const unitName = unit?.name || mat.unit?.name || mat.unitName || "";
-      console.log("Unit from mat:", mat.unitId, "→", unitName);
-      setMaterialInput({
-        selectedMaterialId: String(mat.id),
-        maHang: mat.code || "",
-        tenHang: mat.name || "",
-        donVi: unitName,
-        unitId: mat.unitId || 1,
-        soLuong: materialInput.soLuong,
-        donGia: materialInput.donGia,
-      });
-    }
+    if (!mat) return;
+
+    setMaterialInput((prev) => ({
+      ...prev,
+      selectedMaterialId: String(mat.id),
+      maHang: mat.code || "",
+      tenHang: mat.name || "",
+      donVi: getUnitNameById(mat.unitId, mat.unitName || mat.unit?.name || ""),
+      unitId: Number(mat.unitId || 1),
+    }));
   };
 
   const handleAddMaterial = () => {
@@ -330,7 +413,7 @@ export default function NhapKho() {
       !materialInput.soLuong ||
       !materialInput.donGia
     ) {
-      showToast("Vui lòng chọn vật tư và điền số lượng, đơn giá", "error");
+      showToast("Vui lòng chọn nguyên liệu và điền số lượng, đơn giá", "error");
       return;
     }
 
@@ -347,21 +430,21 @@ export default function NhapKho() {
       return;
     }
 
-    const newMaterial: Material = {
+    const newMaterial: MaterialLine = {
       stt: materials.length + 1,
-      id: "new_" + Date.now(),
+      id: `new_${Date.now()}`,
       materialId: Number(materialInput.selectedMaterialId),
       unitId: materialInput.unitId,
       maHang: materialInput.maHang,
       tenHang: materialInput.tenHang,
-      donVi: materialInput.donVi,
+      donVi: materialInput.donVi || "kg",
       soLuong: quantity,
       donGia: price,
     };
 
     if (editingMaterialId) {
-      setMaterials(
-        materials.map((item) =>
+      setMaterials((prev) =>
+        prev.map((item) =>
           item.id === editingMaterialId
             ? {
                 ...item,
@@ -369,7 +452,7 @@ export default function NhapKho() {
                 unitId: materialInput.unitId,
                 maHang: materialInput.maHang,
                 tenHang: materialInput.tenHang,
-                donVi: materialInput.donVi,
+                donVi: materialInput.donVi || "kg",
                 soLuong: quantity,
                 donGia: price,
               }
@@ -378,7 +461,7 @@ export default function NhapKho() {
       );
       showToast("Cập nhật hàng hóa thành công", "success");
     } else {
-      setMaterials([...materials, newMaterial]);
+      setMaterials((prev) => [...prev, newMaterial]);
       showToast("Thêm hàng hóa thành công", "success");
     }
 
@@ -386,7 +469,7 @@ export default function NhapKho() {
       selectedMaterialId: "",
       maHang: "",
       tenHang: "",
-      donVi: "kg",
+      donVi: "",
       unitId: 1,
       soLuong: "",
       donGia: "",
@@ -395,7 +478,7 @@ export default function NhapKho() {
     setMaterialSearchTerm("");
   };
 
-  const handleEditMaterial = (item: Material) => {
+  const handleEditMaterial = (item: MaterialLine) => {
     setEditingMaterialId(item.id);
     setMaterialInput({
       selectedMaterialId: String(item.materialId),
@@ -433,26 +516,6 @@ export default function NhapKho() {
     );
   });
 
-  const isSupplierInactive = (supplier: any) => {
-    const normalized = (supplier?.status || "").trim().toLowerCase();
-    return normalized === "ngừng hợp tác" || normalized === "ngung hop tac";
-  };
-
-  const selectableSuppliers = availableSuppliers.filter(
-    (supplier: any) => !isSupplierInactive(supplier),
-  );
-
-  const filteredAvailableSuppliers = selectableSuppliers.filter(
-    (supplier: any) => {
-      if (!supplierSearchTerm) return true;
-      const term = supplierSearchTerm.toLowerCase();
-      return (
-        (supplier.code || "").toLowerCase().includes(term) ||
-        (supplier.name || "").toLowerCase().includes(term)
-      );
-    },
-  );
-
   const filteredAvailableWarehouses = availableWarehouses.filter(
     (warehouse: any) => {
       if (!warehouseSearchTerm) return true;
@@ -464,78 +527,24 @@ export default function NhapKho() {
     },
   );
 
-  const isReceiptConfirmed = (status: string) => {
-    return normalizeReceiptStatus(status) === "Approved";
-  };
-
-  const isReceiptCancelled = (status: string) => {
-    return normalizeReceiptStatus(status) === "Cancelled";
-  };
-
-  const isReceiptDraft = (status: string) => {
-    return normalizeReceiptStatus(status) === "Draft";
-  };
-
-  const normalizeReceiptStatus = (status: string) => {
-    const normalized = (status || "").trim().toLowerCase();
-    if (
-      normalized === "approved" ||
-      normalized === "confirmed" ||
-      normalized === "đã xác nhận" ||
-      normalized === "da xac nhan"
-    ) {
-      return "Approved";
-    }
-    if (
-      normalized === "draft" ||
-      normalized === "nháp" ||
-      normalized === "nhap"
-    ) {
-      return "Draft";
-    }
-    if (
-      normalized === "cancelled" ||
-      normalized === "canceled" ||
-      normalized === "đã hủy" ||
-      normalized === "da huy"
-    ) {
-      return "Cancelled";
-    }
-    return "Pending";
-  };
-
-  const getReceiptStatusLabel = (status: string) => {
-    if (isReceiptConfirmed(status)) return "Đã xác nhận";
-    if (isReceiptDraft(status)) return "Đang soạn thảo";
-    if (isReceiptCancelled(status)) return "Đã hủy";
-    return "Chờ xác nhận";
-  };
-
-  const getReceiptStatusClass = (status: string) => {
-    const normalized = normalizeReceiptStatus(status);
-    if (normalized === "Approved") return "status-confirmed";
-    if (normalized === "Draft") return "status-draft";
-    if (normalized === "Cancelled") return "status-cancelled";
-    return "status-pending";
-  };
-
-  const buildImportReceiptPayload = (receipt: Receipt, status: string) => {
+  const buildExportReceiptPayload = (receipt: Receipt, status: string) => {
     const totalAmount = receipt.materials.reduce(
       (sum, m) => sum + m.soLuong * m.donGia,
       0,
     );
+
     return {
       code: receipt.soPhieu,
       receiptNumber: receipt.soPhieu,
-      importTime: new Date(receipt.ngayTao).toISOString(),
-      supplierId: receipt.supplierId || 1,
+      exportDate: new Date(receipt.ngayTao).toISOString(),
       warehouseId: receipt.warehouseId || 1,
-      status: normalizeReceiptStatus(status),
-      createdAt: new Date().toISOString(),
-      supplierInvoiceNo: receipt.soHoaDonNCC || "",
+      receiverName: receipt.receiverName,
+      reason: receipt.lyDo || "",
       documentNo: receipt.soChungTu || "",
       totalAmount,
-      importReceiptDetails: receipt.materials.map((m) => ({
+      status: normalizeReceiptStatus(status),
+      createdAt: new Date().toISOString(),
+      exportReceiptDetails: receipt.materials.map((m) => ({
         ...(m.id.startsWith("new_") ? {} : { id: Number(m.id) }),
         materialId: m.materialId,
         unitId: m.unitId || 1,
@@ -547,7 +556,13 @@ export default function NhapKho() {
     };
   };
 
-  const syncMaterialStockForReceipt = async (receipt: Receipt) => {
+  const validateStockForReceipt = async (receipt: Receipt) => {
+    if (!receipt.warehouseId) {
+      throw new Error("Không xác định được kho để kiểm tra tồn.");
+    }
+
+    const inventoryList = await inventoryService.getAllInventories();
+
     const quantitiesByMaterial = receipt.materials.reduce(
       (acc, item) => {
         if (!item.materialId) return acc;
@@ -558,41 +573,45 @@ export default function NhapKho() {
       {} as Record<number, number>,
     );
 
-    const updateJobs = Object.entries(quantitiesByMaterial).map(
-      async ([materialIdText, quantity]) => {
-        const materialId = Number(materialIdText);
-        let material = availableMaterials.find(
-          (m: any) => Number(m.id) === materialId,
+    for (const [materialIdText, quantity] of Object.entries(
+      quantitiesByMaterial,
+    )) {
+      const materialId = Number(materialIdText);
+      let material = availableMaterials.find(
+        (m: any) => Number(m.id) === materialId,
+      );
+
+      if (!material) {
+        material = await materialService.getMaterialById(materialId);
+      }
+
+      if (!material) {
+        throw new Error(`Không tìm thấy nguyên liệu ID ${materialId}`);
+      }
+
+      const inventoryRow = inventoryList.find(
+        (row: any) =>
+          Number(row.warehouseId) === Number(receipt.warehouseId) &&
+          Number(row.materialId) === materialId,
+      );
+
+      const stock = Number(inventoryRow?.quantity || 0);
+      const needed = Number(quantity || 0);
+      if (stock < needed) {
+        const warehouseName =
+          availableWarehouses.find(
+            (w: any) => Number(w.id) === Number(receipt.warehouseId),
+          )?.name ||
+          receipt.kho ||
+          "kho đã chọn";
+        throw new Error(
+          `Không đủ hàng tồn kho trong "${warehouseName}" cho "${material.name}". Tồn kho: ${stock}, yêu cầu: ${needed}`,
         );
-
-        if (!material) {
-          material = await materialService.getMaterialById(materialId);
-        }
-
-        if (!material) {
-          throw new Error(`Không tìm thấy nguyên liệu ID ${materialId}`);
-        }
-
-        await materialService.updateMaterial(materialId, {
-          code: material.code || "",
-          name: material.name || "",
-          categoryId: material.categoryId || 1,
-          categoryName: material.categoryName || "",
-          unitId: material.unitId || 1,
-          unitName: material.unitName || "",
-          supplierId: material.supplierId || 1,
-          stockQuantity:
-            Number(material.stockQuantity || 0) + Number(quantity || 0),
-          note: material.note || "",
-          status: material.status || "Đang kinh doanh",
-        } as any);
-      },
-    );
-
-    await Promise.all(updateJobs);
+      }
+    }
   };
 
-  const syncMaterialStockForCancellation = async (receipt: Receipt) => {
+  const syncMaterialStockForReceipt = async (receipt: Receipt) => {
     const quantitiesByMaterial = receipt.materials.reduce(
       (acc, item) => {
         if (!item.materialId) return acc;
@@ -641,43 +660,49 @@ export default function NhapKho() {
     await Promise.all(updateJobs);
   };
 
-  const fetchImportReceiptDetail = async (
-    receiptId: string | number,
-    mats?: any[],
-  ) => {
-    const data = await importService.getImportReceiptById(Number(receiptId));
-    const materialsList = mats || availableMaterials;
-    return {
-      id: String(data.id),
-      soPhieu: data.receiptNumber || data.code || "",
-      ngayTao: data.importTime,
-      supplierId: data.supplierId || data.supplier?.id,
-      tenNCC: data.supplier?.name || "",
-      soHoaDonNCC: data.supplierInvoiceNo,
-      warehouseId: data.warehouseId || data.warehouse?.id,
-      kho: data.warehouse?.name || "",
-      tongTien: data.totalAmount || 0,
-      soChungTu: data.documentNo,
-      trangThai: data.status || "Pending",
-      materials: (data.importReceiptDetails || []).map(
-        (detail: any, idx: number) => {
-          const mat = materialsList.find(
-            (m: any) => Number(m.id) === Number(detail.materialId),
-          );
-          return {
-            stt: idx + 1,
-            id: String(detail.id ?? `row_${idx}`),
-            materialId: Number(detail.materialId || 0),
-            unitId: Number(detail.unitId || 1),
-            maHang: detail.material?.code || mat?.code || "",
-            tenHang: detail.material?.name || mat?.name || "",
-            donVi: detail.unit?.name || mat?.unitName || "kg",
-            soLuong: Number(detail.quantity ?? 0),
-            donGia: Number(detail.unitPrice ?? 0),
-          };
-        },
-      ),
-    } as Receipt;
+  const syncMaterialStockForCancellation = async (receipt: Receipt) => {
+    const quantitiesByMaterial = receipt.materials.reduce(
+      (acc, item) => {
+        if (!item.materialId) return acc;
+        acc[item.materialId] =
+          (acc[item.materialId] || 0) + Number(item.soLuong || 0);
+        return acc;
+      },
+      {} as Record<number, number>,
+    );
+
+    const updateJobs = Object.entries(quantitiesByMaterial).map(
+      async ([materialIdText, quantity]) => {
+        const materialId = Number(materialIdText);
+        let material = availableMaterials.find(
+          (m: any) => Number(m.id) === materialId,
+        );
+
+        if (!material) {
+          material = await materialService.getMaterialById(materialId);
+        }
+
+        if (!material) {
+          throw new Error(`Không tìm thấy nguyên liệu ID ${materialId}`);
+        }
+
+        await materialService.updateMaterial(materialId, {
+          code: material.code || "",
+          name: material.name || "",
+          categoryId: material.categoryId || 1,
+          categoryName: material.categoryName || "",
+          unitId: material.unitId || 1,
+          unitName: material.unitName || "",
+          supplierId: material.supplierId || 1,
+          stockQuantity:
+            Number(material.stockQuantity || 0) + Number(quantity || 0),
+          note: material.note || "",
+          status: material.status || "Đang kinh doanh",
+        } as any);
+      },
+    );
+
+    await Promise.all(updateJobs);
   };
 
   const handleEditReceipt = async (receipt: Receipt) => {
@@ -687,10 +712,11 @@ export default function NhapKho() {
     }
 
     let receiptForEdit = receipt;
+
     try {
-      receiptForEdit = await fetchImportReceiptDetail(receipt.id);
+      receiptForEdit = await fetchExportReceiptDetail(receipt.id);
     } catch (err) {
-      console.error("Không thể tải chi tiết phiếu nhập khi sửa", err);
+      console.error("Không thể tải chi tiết phiếu xuất khi sửa", err);
     }
 
     setSelectedReceipt(receiptForEdit);
@@ -699,26 +725,15 @@ export default function NhapKho() {
       ngayTao: receiptForEdit.ngayTao
         ? receiptForEdit.ngayTao.split("T")[0]
         : "",
-      tenNCC: receiptForEdit.tenNCC,
-      soHoaDonNCC: receiptForEdit.soHoaDonNCC || "",
-      kho: receiptForEdit.kho,
+      nguoiNhan: receiptForEdit.receiverName,
       soChungTu: receiptForEdit.soChungTu || "",
+      kho: receiptForEdit.kho,
+      lyDo: receiptForEdit.lyDo || "Bán hàng",
     });
-    if (receiptForEdit.supplierId) {
-      setSelectedSupplierId(receiptForEdit.supplierId);
-    } else {
-      // Find and set the supplier ID based on name
-      const supplier = availableSuppliers.find(
-        (s: any) => s.name === receiptForEdit.tenNCC,
-      );
-      if (supplier) {
-        setSelectedSupplierId(supplier.id);
-      }
-    }
+
     if (receiptForEdit.warehouseId) {
       setSelectedWarehouseId(receiptForEdit.warehouseId);
     } else {
-      // Find and set the warehouse ID based on name
       const warehouse = availableWarehouses.find(
         (w: any) => w.name === receiptForEdit.kho,
       );
@@ -726,8 +741,22 @@ export default function NhapKho() {
         setSelectedWarehouseId(warehouse.id);
       }
     }
+
     setMaterials(receiptForEdit.materials);
     setView("edit");
+  };
+
+  const handleViewReceipt = async (receipt: Receipt) => {
+    let receiptForView = receipt;
+
+    try {
+      receiptForView = await fetchExportReceiptDetail(receipt.id);
+    } catch (err) {
+      console.error("Không thể tải chi tiết phiếu xuất khi xem", err);
+    }
+
+    setSelectedReceipt(receiptForView);
+    setView("detail");
   };
 
   const handleSaveReceipt = async (
@@ -735,7 +764,7 @@ export default function NhapKho() {
   ) => {
     if (
       !formData.soPhieu ||
-      !formData.tenNCC ||
+      !formData.nguoiNhan ||
       !formData.kho ||
       materials.length === 0
     ) {
@@ -743,109 +772,89 @@ export default function NhapKho() {
       return;
     }
 
-    // Validate material quantities and prices
-    for (const material of materials) {
-      if (material.soLuong <= 0) {
+    if (!selectedWarehouseId) {
+      showToast("Vui lòng chọn kho từ danh sách", "error");
+      return;
+    }
+
+    for (const item of materials) {
+      if (item.soLuong <= 0) {
         showToast(
-          `Vật tư "${material.tenHang}" có số lượng không hợp lệ`,
+          `Nguyên liệu "${item.tenHang}" có số lượng không hợp lệ`,
           "error",
         );
         return;
       }
-      if (material.donGia <= 0) {
+      if (item.donGia <= 0) {
         showToast(
-          `Vật tư "${material.tenHang}" có đơn giá không hợp lệ`,
+          `Nguyên liệu "${item.tenHang}" có đơn giá không hợp lệ`,
           "error",
         );
         return;
       }
     }
 
-    if (!selectedSupplierId) {
-      showToast("Vui lòng chọn nhà cung cấp từ danh sách", "error");
-      return;
-    }
-
-    const selectedSupplier = availableSuppliers.find(
-      (s: any) => s.id === selectedSupplierId,
-    );
-    if (!selectedSupplier || isSupplierInactive(selectedSupplier)) {
-      showToast(
-        "Nhà cung cấp đã ngừng hợp tác, vui lòng chọn nhà cung cấp khác",
-        "error",
-      );
-      return;
-    }
+    const workingReceipt: Receipt = {
+      id: selectedReceipt?.id || "",
+      soPhieu: formData.soPhieu,
+      ngayTao: formData.ngayTao,
+      receiverName: formData.nguoiNhan,
+      warehouseId: selectedWarehouseId,
+      kho: formData.kho,
+      tongTien: materials.reduce((sum, m) => sum + m.soLuong * m.donGia, 0),
+      lyDo: formData.lyDo,
+      soChungTu: formData.soChungTu,
+      trangThai:
+        view === "create"
+          ? targetStatus
+          : ["Approved", "Cancelled"].includes(
+                normalizeReceiptStatus(selectedReceipt?.trangThai || "Pending"),
+              )
+            ? normalizeReceiptStatus(selectedReceipt?.trangThai || "Pending")
+            : targetStatus,
+      materials,
+    };
 
     try {
       setLoading(true);
-      const totalAmount = materials.reduce(
-        (sum, m) => sum + m.soLuong * m.donGia,
-        0,
+      await validateStockForReceipt(workingReceipt);
+      const payload = buildExportReceiptPayload(
+        workingReceipt,
+        workingReceipt.trangThai,
       );
 
-      const importReceiptDetails = materials.map((m) => ({
-        ...(m.id.startsWith("new_") ? {} : { id: Number(m.id) }),
-        materialId: m.materialId,
-        unitId: m.unitId || 1,
-        quantity: m.soLuong,
-        unitPrice: m.donGia,
-        amount: m.soLuong * m.donGia,
-        note: "",
-      }));
-
-      const receiptData = {
-        code: formData.soPhieu,
-        receiptNumber: formData.soPhieu,
-        importTime: new Date(formData.ngayTao).toISOString(),
-        supplierId: selectedSupplierId || 1,
-        warehouseId: selectedWarehouseId || 1,
-        status:
-          view === "create"
-            ? targetStatus
-            : ["Approved", "Cancelled"].includes(
-                  normalizeReceiptStatus(
-                    selectedReceipt?.trangThai || "Pending",
-                  ),
-                )
-              ? normalizeReceiptStatus(selectedReceipt?.trangThai || "Pending")
-              : targetStatus,
-        createdAt: new Date().toISOString(),
-        supplierInvoiceNo: formData.soHoaDonNCC,
-        documentNo: formData.soChungTu,
-        totalAmount: totalAmount,
-        importReceiptDetails: importReceiptDetails,
-      };
-
       if (view === "create") {
-        await importService.createImportReceipt(receiptData as any);
+        await exportService.createExportReceipt(payload as any);
         if (targetStatus === "Draft") {
-          showToast("Đã lưu phiếu nhập ở trạng thái đang soạn thảo", "success");
+          showToast("Đã lưu phiếu xuất ở trạng thái đang soạn thảo", "success");
         } else {
-          showToast("Tạo phiếu nhập kho thành công", "success");
+          showToast(
+            "Tạo phiếu xuất kho thành công. Tồn kho sẽ được trừ khi bạn bấm Xác nhận.",
+            "success",
+          );
         }
       } else if (selectedReceipt?.id) {
-        await importService.updateImportReceipt(
+        await exportService.updateExportReceipt(
           Number(selectedReceipt.id),
-          receiptData as any,
+          payload as any,
         );
         if (
           isReceiptDraft(selectedReceipt.trangThai) &&
           targetStatus === "Pending"
         ) {
-          showToast("Đã gửi phiếu nhập chờ xác nhận", "success");
+          showToast("Đã gửi phiếu xuất chờ xác nhận", "success");
         } else if (targetStatus === "Draft") {
-          showToast("Đã lưu phiếu nhập ở trạng thái đang soạn thảo", "success");
+          showToast("Đã lưu phiếu xuất ở trạng thái đang soạn thảo", "success");
         } else {
-          showToast("Cập nhật phiếu nhập kho thành công", "success");
+          showToast("Cập nhật phiếu xuất kho thành công", "success");
         }
       }
 
       resetForm();
       setView("list");
-      fetchImportReceipts();
+      fetchExportReceipts();
     } catch (err) {
-      showToast("Lỗi lưu phiếu nhập", "error");
+      showToast(extractApiErrorMessage(err), "error");
     } finally {
       setLoading(false);
     }
@@ -857,11 +866,11 @@ export default function NhapKho() {
       onConfirm: async () => {
         try {
           setLoading(true);
-          await importService.deleteImportReceipt(Number(id));
-          showToast("Xóa phiếu nhập thành công", "success");
-          fetchImportReceipts();
+          await exportService.deleteExportReceipt(Number(id));
+          showToast("Xóa phiếu xuất thành công", "success");
+          fetchExportReceipts();
         } catch (err) {
-          showToast("Lỗi xóa phiếu nhập", "error");
+          showToast("Lỗi xóa phiếu xuất", "error");
         } finally {
           setLoading(false);
         }
@@ -890,31 +899,34 @@ export default function NhapKho() {
 
     showConfirm({
       message:
-        "Bạn có chắc muốn xác nhận phiếu này? Sau khi xác nhận, tồn kho sẽ được cộng thêm.",
+        "Bạn có chắc muốn xác nhận phiếu này? Sau khi xác nhận, backend sẽ tự động cập nhật tồn kho.",
       onConfirm: async () => {
         try {
           setLoading(true);
-          const detailedReceipt = await fetchImportReceiptDetail(receipt.id);
-          const payload = buildImportReceiptPayload(
+          const detailedReceipt = await fetchExportReceiptDetail(receipt.id);
+          const payload = buildExportReceiptPayload(
             detailedReceipt,
             "Approved",
           );
-          await importService.updateImportReceipt(
+          await exportService.updateExportReceipt(
             Number(receipt.id),
             payload as any,
           );
           await syncMaterialStockForReceipt(detailedReceipt);
+          const refreshedMaterials = await fetchMaterials();
+          await fetchExportReceipts(refreshedMaterials);
+
+          if (selectedReceipt?.id === receipt.id) {
+            setSelectedReceipt({ ...detailedReceipt, trangThai: "Approved" });
+          }
+
           showToast(
             "Xác nhận phiếu thành công, tồn kho đã được cập nhật",
             "success",
           );
-          const refreshedMaterials = await fetchMaterials();
-          await fetchImportReceipts(refreshedMaterials);
-          if (selectedReceipt?.id === receipt.id) {
-            setSelectedReceipt({ ...detailedReceipt, trangThai: "Approved" });
-          }
         } catch (err) {
-          showToast("Lỗi khi xác nhận phiếu hoặc cập nhật tồn kho", "error");
+          const message = extractApiErrorMessage(err);
+          showToast(message, "error");
         } finally {
           setLoading(false);
         }
@@ -933,23 +945,24 @@ export default function NhapKho() {
       onConfirm: async () => {
         try {
           setLoading(true);
-          const detailedReceipt = await fetchImportReceiptDetail(receipt.id);
-          const payload = buildImportReceiptPayload(detailedReceipt, "Pending");
-          await importService.updateImportReceipt(
+          const detailedReceipt = await fetchExportReceiptDetail(receipt.id);
+          const payload = buildExportReceiptPayload(detailedReceipt, "Pending");
+          await exportService.updateExportReceipt(
             Number(receipt.id),
             payload as any,
           );
 
           const refreshedMaterials = await fetchMaterials();
-          await fetchImportReceipts(refreshedMaterials);
+          await fetchExportReceipts(refreshedMaterials);
 
           if (selectedReceipt?.id === receipt.id) {
             setSelectedReceipt({ ...detailedReceipt, trangThai: "Pending" });
           }
 
-          showToast("Đã gửi phiếu nhập chờ xác nhận", "success");
+          showToast("Đã gửi phiếu xuất chờ xác nhận", "success");
         } catch (err) {
-          showToast("Lỗi khi gửi phiếu chờ xác nhận", "error");
+          const message = extractApiErrorMessage(err);
+          showToast(message, "error");
         } finally {
           setLoading(false);
         }
@@ -963,20 +976,20 @@ export default function NhapKho() {
       return;
     }
 
-    const isConfirmed = isReceiptConfirmed(receipt.trangThai);
+    const wasConfirmed = isReceiptConfirmed(receipt.trangThai);
     showConfirm({
-      message: isConfirmed
+      message: wasConfirmed
         ? "Bạn có chắc muốn hủy phiếu này? Phiếu đã xác nhận sẽ được hoàn tác tồn kho trên giao diện."
         : "Bạn có chắc muốn hủy phiếu này?",
       onConfirm: async () => {
         try {
           setLoading(true);
-          const detailedReceipt = await fetchImportReceiptDetail(receipt.id);
-          const payload = buildImportReceiptPayload(
+          const detailedReceipt = await fetchExportReceiptDetail(receipt.id);
+          const payload = buildExportReceiptPayload(
             detailedReceipt,
             "Cancelled",
           );
-          await importService.updateImportReceipt(
+          await exportService.updateExportReceipt(
             Number(receipt.id),
             payload as any,
           );
@@ -986,20 +999,56 @@ export default function NhapKho() {
           }
 
           const refreshedMaterials = await fetchMaterials();
-          await fetchImportReceipts(refreshedMaterials);
+          await fetchExportReceipts(refreshedMaterials);
 
           if (selectedReceipt?.id === receipt.id) {
             setSelectedReceipt({ ...detailedReceipt, trangThai: "Cancelled" });
           }
 
-          showToast("Hủy phiếu nhập thành công", "success");
+          showToast("Hủy phiếu xuất thành công", "success");
         } catch (err) {
-          showToast("Lỗi khi hủy phiếu nhập", "error");
+          const message = extractApiErrorMessage(err);
+          showToast(message, "error");
         } finally {
           setLoading(false);
         }
       },
     });
+  };
+
+  const handleExportToCSV = () => {
+    if (receipts.length === 0) {
+      showToast("Không có dữ liệu để xuất", "warning");
+      return;
+    }
+
+    const headers = [
+      "Số Phiếu",
+      "Ngày Xuất",
+      "Người Nhận",
+      "Kho",
+      "Tổng Tiền",
+      "Trạng Thái",
+    ];
+    const rows = receipts.map((r) => [
+      r.soPhieu,
+      new Date(r.ngayTao).toLocaleDateString("vi-VN"),
+      r.receiverName,
+      r.kho,
+      r.tongTien.toLocaleString("vi-VN"),
+      getReceiptStatusLabel(r.trangThai),
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
+    ].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `phieu-xuat-${new Date().toISOString().split("T")[0]}.csv`;
+    link.click();
+    showToast("Xuất dữ liệu thành công", "success");
   };
 
   const warehouseFilterOptions = Array.from(
@@ -1016,17 +1065,19 @@ export default function NhapKho() {
     .filter(
       (r) =>
         (r.soPhieu.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          r.tenNCC.toLowerCase().includes(searchTerm.toLowerCase())) &&
+          r.receiverName.toLowerCase().includes(searchTerm.toLowerCase())) &&
         (!filters.kho || r.kho === filters.kho) &&
         (!filters.trangThai ||
           getReceiptStatusLabel(r.trangThai) === filters.trangThai),
     )
     .sort((a, b) => {
       let comparison = 0;
-      if (sortBy === "ngayTao")
+      if (sortBy === "ngayTao") {
         comparison =
           new Date(a.ngayTao).getTime() - new Date(b.ngayTao).getTime();
-      else if (sortBy === "tongTien") comparison = a.tongTien - b.tongTien;
+      } else if (sortBy === "tongTien") {
+        comparison = a.tongTien - b.tongTien;
+      }
       return sortOrder === "desc" ? -comparison : comparison;
     });
 
@@ -1049,13 +1100,13 @@ export default function NhapKho() {
   if (view === "list") {
     return (
       <>
-        <PageMeta title="Phiếu nhập kho" description="Quản lý phiếu nhập kho" />
-        <PageBreadcrumb pageTitle="Phiếu nhập kho" />
+        <PageMeta title="Phiếu xuất kho" description="Quản lý phiếu xuất kho" />
+        <PageBreadcrumb pageTitle="Phiếu xuất kho" />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
           <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white dark:border-sky-500/30 dark:from-sky-500/10 dark:to-gray-900 p-4">
             <p className="text-xs font-medium text-sky-700 dark:text-sky-300">
-              Tổng phiếu nhập
+              Tổng phiếu xuất
             </p>
             <p className="mt-2 text-2xl font-semibold text-sky-900 dark:text-sky-200">
               {summaryStats.totalReceipts}
@@ -1079,7 +1130,7 @@ export default function NhapKho() {
           </div>
           <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white dark:border-emerald-500/30 dark:from-emerald-500/10 dark:to-gray-900 p-4">
             <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
-              Tổng giá trị nhập
+              Tổng giá trị xuất
             </p>
             <p className="mt-2 text-xl font-semibold text-emerald-900 dark:text-emerald-200">
               {summaryStats.totalValue.toLocaleString("vi-VN")}₫
@@ -1092,34 +1143,55 @@ export default function NhapKho() {
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Danh sách phiếu nhập kho
+                  Danh sách phiếu xuất kho
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  Quản lý phiếu nhập kho hàng hóa.
+                  Quản lý phiếu xuất kho hàng hóa.
                 </p>
               </div>
-              <button
-                onClick={() => {
-                  resetForm();
-                  setView("create");
-                }}
-                className="module-primary-btn inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white transition-all duration-200 shadow-sm"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleExportToCSV}
+                  className="module-secondary-btn inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
-                Thêm Phiếu Nhập
-              </button>
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                    />
+                  </svg>
+                  Export
+                </button>
+                <button
+                  onClick={() => {
+                    resetForm();
+                    setView("create");
+                  }}
+                  className="module-primary-btn inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white transition-all duration-200 shadow-sm"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                  Thêm Phiếu Xuất
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1141,7 +1213,7 @@ export default function NhapKho() {
                 </svg>
                 <input
                   type="text"
-                  placeholder="Tìm phiếu hoặc nhà cung cấp..."
+                  placeholder="Tìm phiếu hoặc người nhận..."
                   value={searchTerm}
                   onChange={(e) => {
                     setSearchTerm(e.target.value);
@@ -1150,6 +1222,7 @@ export default function NhapKho() {
                   className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 />
               </div>
+
               <div className="flex gap-2 w-full sm:w-auto">
                 <div className="relative">
                   <button
@@ -1265,6 +1338,7 @@ export default function NhapKho() {
                   <option value="ngayTao">Sắp xếp theo ngày</option>
                   <option value="tongTien">Sắp xếp theo giá trị</option>
                 </select>
+
                 <button
                   onClick={() =>
                     setSortOrder(sortOrder === "asc" ? "desc" : "asc")
@@ -1288,7 +1362,7 @@ export default function NhapKho() {
                     Ngày Tạo
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
-                    Nhà Cung Cấp
+                    Người Nhận
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
                     Kho
@@ -1336,10 +1410,10 @@ export default function NhapKho() {
                         {new Date(receipt.ngayTao).toLocaleDateString("vi-VN")}
                       </td>
                       <td className="px-6 py-4 text-gray-600 dark:text-gray-400">
-                        {receipt.tenNCC}
+                        {receipt.receiverName}
                       </td>
                       <td className="px-6 py-4 text-gray-600 dark:text-gray-400">
-                        {receipt.kho}
+                        {receipt.kho || `Kho ${receipt.warehouseId || ""}`}
                       </td>
                       <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
                         {receipt.tongTien.toLocaleString("vi-VN")}₫
@@ -1352,13 +1426,11 @@ export default function NhapKho() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-center">
-                        <div className="flex justify-center gap-2">
+                        <div className="flex items-center justify-center gap-3">
                           <button
-                            onClick={() => {
-                              setSelectedReceipt(receipt);
-                              setView("detail");
-                            }}
+                            onClick={() => handleViewReceipt(receipt)}
                             className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                            aria-label="Xem chi tiết phiếu xuất"
                           >
                             <svg
                               className="w-4 h-4 text-blue-500"
@@ -1383,6 +1455,7 @@ export default function NhapKho() {
                           <button
                             onClick={() => void handleEditReceipt(receipt)}
                             className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                            aria-label="Chỉnh sửa phiếu xuất"
                           >
                             <svg
                               className="w-4 h-4 text-orange-500"
@@ -1401,6 +1474,7 @@ export default function NhapKho() {
                           <button
                             onClick={() => handleDeleteReceipt(receipt.id)}
                             className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                            aria-label="Xóa phiếu xuất"
                           >
                             <svg
                               className="w-4 h-4 text-red-500"
@@ -1439,6 +1513,7 @@ export default function NhapKho() {
               >
                 ‹
               </button>
+
               {(() => {
                 const pages = [];
                 const maxVisible = 5;
@@ -1447,9 +1522,11 @@ export default function NhapKho() {
                   currentPage - Math.floor(maxVisible / 2),
                 );
                 let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+
                 if (endPage - startPage + 1 < maxVisible) {
                   startPage = Math.max(1, endPage - maxVisible + 1);
                 }
+
                 pages.push(1);
                 if (startPage > 2) {
                   pages.push("...");
@@ -1469,6 +1546,7 @@ export default function NhapKho() {
                 if (totalPages > 1 && !pages.includes(totalPages)) {
                   pages.push(totalPages);
                 }
+
                 return pages.map((page, idx) =>
                   page === "..." ? (
                     <span
@@ -1481,13 +1559,18 @@ export default function NhapKho() {
                     <button
                       key={page}
                       onClick={() => setCurrentPage(page as number)}
-                      className={`px-4 py-2 text-sm rounded-lg transition-colors ${page === currentPage ? "bg-blue-600 text-white" : "border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
+                      className={`px-4 py-2 text-sm rounded-lg transition-colors ${
+                        page === currentPage
+                          ? "bg-blue-600 text-white"
+                          : "border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                      }`}
                     >
                       {page}
                     </button>
                   ),
                 );
               })()}
+
               <button
                 onClick={() =>
                   setCurrentPage(Math.min(totalPages, currentPage + 1))
@@ -1509,18 +1592,18 @@ export default function NhapKho() {
       <>
         <PageMeta
           title={view === "create" ? "Tạo phiếu" : "Sửa phiếu"}
-          description="Form phiếu nhập kho"
+          description="Form phiếu xuất kho"
         />
         <PageBreadcrumb
-          pageTitle={view === "create" ? "Tạo phiếu nhập" : "Sửa phiếu nhập"}
+          pageTitle={view === "create" ? "Tạo phiếu xuất" : "Sửa phiếu xuất"}
         />
 
         <div className="module-view form-tone-sync module-surface rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03] p-6">
           <div className="mb-6">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
               {view === "create"
-                ? "Tạo phiếu nhập mới"
-                : "Chỉnh sửa phiếu nhập"}
+                ? "Tạo phiếu xuất mới"
+                : "Chỉnh sửa phiếu xuất"}
             </h2>
           </div>
 
@@ -1538,6 +1621,7 @@ export default function NhapKho() {
                 className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Ngày Tạo
@@ -1551,102 +1635,38 @@ export default function NhapKho() {
                 className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Nhà Cung Cấp
-              </label>
-              <div ref={supplierDropdownRef} className="relative">
-                <div className="relative">
-                  <svg
-                    className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                    />
-                  </svg>
-                  <input
-                    type="text"
-                    value={supplierSearchTerm}
-                    onChange={(e) => {
-                      setSupplierSearchTerm(e.target.value);
-                      setIsSupplierDropdownOpen(true);
-                    }}
-                    onFocus={() => setIsSupplierDropdownOpen(true)}
-                    placeholder={
-                      selectedSupplierId
-                        ? formData.tenNCC
-                        : "Gõ tên hoặc mã nhà cung cấp..."
-                    }
-                    className="w-full pl-9 pr-8 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  {selectedSupplierId && (
-                    <button
-                      type="button"
-                      onClick={() => handleSelectSupplier(null)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-                {isSupplierDropdownOpen &&
-                  filteredAvailableSuppliers.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
-                      <div className="p-1">
-                        <div className="text-xs text-gray-500 dark:text-gray-400 px-3 py-2 font-medium">
-                          Chọn nhà cung cấp:
-                        </div>
-                        {filteredAvailableSuppliers
-                          .slice(0, 8)
-                          .map((supplier: any) => (
-                            <button
-                              key={supplier.id}
-                              type="button"
-                              onClick={() => handleSelectSupplier(supplier.id)}
-                              className={`w-full text-left px-3 py-2.5 rounded text-sm transition-colors ${selectedSupplierId === supplier.id ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium" : "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"}`}
-                            >
-                              <div className="font-medium">{supplier.name}</div>
-                              <div className="text-xs text-gray-500 dark:text-gray-400">
-                                {supplier.code}
-                              </div>
-                            </button>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Số Hóa Đơn NCC
+                Người Nhận
               </label>
               <input
                 type="text"
-                value={formData.soHoaDonNCC}
+                value={formData.nguoiNhan}
                 onChange={(e) =>
-                  setFormData({ ...formData, soHoaDonNCC: e.target.value })
+                  setFormData({ ...formData, nguoiNhan: e.target.value })
                 }
                 className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Lý Do Xuất
+              </label>
+              <select
+                value={formData.lyDo}
+                onChange={(e) =>
+                  setFormData({ ...formData, lyDo: e.target.value })
+                }
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="Bán hàng">Bán hàng</option>
+                <option value="Hỏng hóc">Hỏng hóc</option>
+                <option value="Khác">Khác</option>
+              </select>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Kho
@@ -1703,6 +1723,7 @@ export default function NhapKho() {
                     </button>
                   )}
                 </div>
+
                 {isWarehouseDropdownOpen &&
                   filteredAvailableWarehouses.length > 0 && (
                     <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
@@ -1719,7 +1740,11 @@ export default function NhapKho() {
                               onClick={() =>
                                 handleSelectWarehouse(warehouse.id)
                               }
-                              className={`w-full text-left px-3 py-2.5 rounded text-sm transition-colors ${selectedWarehouseId === warehouse.id ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium" : "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"}`}
+                              className={`w-full text-left px-3 py-2.5 rounded text-sm transition-colors ${
+                                selectedWarehouseId === warehouse.id
+                                  ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium"
+                                  : "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                              }`}
                             >
                               <div className="font-medium">
                                 {warehouse.name}
@@ -1734,6 +1759,7 @@ export default function NhapKho() {
                   )}
               </div>
             </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Số Chứng Từ
@@ -1753,10 +1779,11 @@ export default function NhapKho() {
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
               Thêm Hàng Hóa
             </h3>
+
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
               <div className="md:col-span-2" ref={materialDropdownRef}>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                  Chọn Vật Tư
+                  Chọn Nguyên Liệu
                 </label>
                 <div className="relative">
                   <div className="relative">
@@ -1787,7 +1814,7 @@ export default function NhapKho() {
                       placeholder={
                         materialInput.selectedMaterialId
                           ? `${materialInput.maHang} - ${materialInput.tenHang}`
-                          : "Gõ tên hoặc mã vật tư để tìm..."
+                          : "Gõ tên hoặc mã nguyên liệu để tìm..."
                       }
                       className="w-full pl-9 pr-8 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
@@ -1817,7 +1844,6 @@ export default function NhapKho() {
                     )}
                   </div>
 
-                  {/* Selected badge */}
                   {materialInput.selectedMaterialId &&
                     !isMaterialDropdownOpen && (
                       <div className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-500/15 border border-blue-200 dark:border-blue-500/30 rounded-md">
@@ -1827,12 +1853,11 @@ export default function NhapKho() {
                       </div>
                     )}
 
-                  {/* Dropdown list */}
                   {isMaterialDropdownOpen && (
                     <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                       {filteredAvailableMaterials.length === 0 ? (
                         <div className="px-3 py-4 text-sm text-gray-500 dark:text-gray-400 text-center">
-                          Không tìm thấy vật tư
+                          Không tìm thấy nguyên liệu
                         </div>
                       ) : (
                         filteredAvailableMaterials.map((mat: any) => (
@@ -1868,6 +1893,7 @@ export default function NhapKho() {
                   )}
                 </div>
               </div>
+
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                   Đơn Vị
@@ -1878,10 +1904,13 @@ export default function NhapKho() {
                   readOnly
                   className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white cursor-not-allowed"
                   placeholder={
-                    materialInput.selectedMaterialId ? "" : "Chọn vật tư trước"
+                    materialInput.selectedMaterialId
+                      ? ""
+                      : "Chọn nguyên liệu trước"
                   }
                 />
               </div>
+
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                   Số Lượng
@@ -1895,10 +1924,10 @@ export default function NhapKho() {
                       soLuong: e.target.value,
                     })
                   }
-                  placeholder=""
                   className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                   Đơn Giá
@@ -1912,11 +1941,11 @@ export default function NhapKho() {
                       donGia: e.target.value,
                     })
                   }
-                  placeholder=""
                   className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
+
             <div className="flex items-center gap-2">
               <button
                 onClick={handleAddMaterial}
@@ -1946,6 +1975,7 @@ export default function NhapKho() {
                 </button>
               )}
             </div>
+
             {materials.length > 0 && (
               <div className="mt-6 overflow-x-auto">
                 <table className="w-full text-xs">
@@ -2069,6 +2099,7 @@ export default function NhapKho() {
               </svg>
               {view === "create" ? "Tạo Phiếu" : "Cập Nhật"}
             </button>
+
             <button
               onClick={() => {
                 setView("list");
@@ -2106,58 +2137,84 @@ export default function NhapKho() {
       (sum, m) => sum + Number(m.soLuong || 0),
       0,
     );
-    const averagePrice =
-      totalQuantity > 0 ? Math.round(totalAmount / totalQuantity) : 0;
+
     return (
       <>
         <PageMeta
           title={`Chi tiết phiếu ${selectedReceipt.soPhieu}`}
-          description="Chi tiết phiếu nhập kho"
+          description="Chi tiết phiếu xuất kho"
+        />
+        <PageBreadcrumb
+          pageTitle={`Chi tiết phiếu ${selectedReceipt.soPhieu}`}
         />
 
-        <div className="module-view space-y-4">
-          <div className="rounded-2xl border border-sky-200 bg-gradient-to-r from-sky-50 via-white to-emerald-50 p-5 dark:border-sky-500/30 dark:from-sky-500/10 dark:via-gray-900 dark:to-emerald-500/10">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <button
-                  onClick={() => setView("list")}
-                  className="module-ghost-btn inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800/70"
+        <div className="mb-4 rounded-2xl border border-sky-200 bg-gradient-to-r from-sky-50 via-white to-emerald-50 p-5 dark:border-sky-500/30 dark:from-sky-500/10 dark:via-gray-900 dark:to-emerald-500/10">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <button
+                onClick={() => setView("list")}
+                className="module-ghost-btn inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800/70"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
                 >
-                  <svg
-                    className="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
+                Quay Lại
+              </button>
+              <h2 className="mt-3 text-xl font-semibold text-gray-900 dark:text-white">
+                Chi tiết phiếu xuất {selectedReceipt.soPhieu}
+              </h2>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                Ngày tạo: {new Date(selectedReceipt.ngayTao).toLocaleDateString("vi-VN")}
+              </p>
+            </div>
+
+            <div className="flex flex-col items-start gap-3 lg:items-end">
+              <span
+                className={`status-pill ${getReceiptStatusClass(selectedReceipt.trangThai)}`}
+              >
+                {getReceiptStatusLabel(selectedReceipt.trangThai)}
+              </span>
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/70 bg-white/70 p-2 backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/70">
+                {isReceiptDraft(selectedReceipt.trangThai) && (
+                  <button
+                    onClick={() => handleSubmitReceipt(selectedReceipt)}
+                    aria-label="Gửi yêu cầu xác nhận"
+                    title="Gửi yêu cầu xác nhận"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white transition-colors hover:bg-blue-700"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M15 19l-7-7 7-7"
-                    />
-                  </svg>
-                  Quay Lại
-                </button>
-                <h2 className="mt-3 text-xl font-semibold text-gray-900 dark:text-white">
-                  Chi tiết phiếu nhập {selectedReceipt.soPhieu}
-                </h2>
-                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                  Ngày tạo: {new Date(selectedReceipt.ngayTao).toLocaleDateString("vi-VN")}
-                </p>
-              </div>
-              <div className="flex flex-col items-start gap-3 lg:items-end">
-                <span
-                  className={`status-pill ${getReceiptStatusClass(selectedReceipt.trangThai)}`}
-                >
-                  {getReceiptStatusLabel(selectedReceipt.trangThai)}
-                </span>
-                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/70 bg-white/70 p-2 backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/70">
-                  {isReceiptDraft(selectedReceipt.trangThai) && (
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  </button>
+                )}
+                {!isReceiptDraft(selectedReceipt.trangThai) &&
+                  !isReceiptConfirmed(selectedReceipt.trangThai) &&
+                  !isReceiptCancelled(selectedReceipt.trangThai) && (
                     <button
-                      onClick={() => handleSubmitReceipt(selectedReceipt)}
-                      aria-label="Gửi yêu cầu xác nhận"
-                      title="Gửi yêu cầu xác nhận"
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white transition-colors hover:bg-blue-700"
+                      onClick={() => handleConfirmReceipt(selectedReceipt)}
+                      aria-label="Xác nhận phiếu"
+                      title="Xác nhận phiếu"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white transition-colors hover:bg-emerald-700"
                     >
                       <svg
                         className="h-4 w-4"
@@ -2174,57 +2231,12 @@ export default function NhapKho() {
                       </svg>
                     </button>
                   )}
-                  {!isReceiptDraft(selectedReceipt.trangThai) &&
-                    !isReceiptConfirmed(selectedReceipt.trangThai) &&
-                    !isReceiptCancelled(selectedReceipt.trangThai) && (
-                      <button
-                        onClick={() => handleConfirmReceipt(selectedReceipt)}
-                        aria-label="Xác nhận phiếu"
-                        title="Xác nhận phiếu"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white transition-colors hover:bg-emerald-700"
-                      >
-                        <svg
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      </button>
-                    )}
-                  {!isReceiptCancelled(selectedReceipt.trangThai) && (
-                    <button
-                      onClick={() => handleCancelReceipt(selectedReceipt)}
-                      aria-label="Hủy phiếu"
-                      title="Hủy phiếu"
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gray-700 text-white transition-colors hover:bg-gray-800"
-                    >
-                      <svg
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    </button>
-                  )}
+                {!isReceiptCancelled(selectedReceipt.trangThai) && (
                   <button
-                    onClick={() => void handleEditReceipt(selectedReceipt)}
-                    aria-label="Sửa phiếu"
-                    title="Sửa phiếu"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500 text-white transition-colors hover:bg-amber-600"
+                    onClick={() => handleCancelReceipt(selectedReceipt)}
+                    aria-label="Hủy phiếu"
+                    title="Hủy phiếu"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gray-700 text-white transition-colors hover:bg-gray-800"
                   >
                     <svg
                       className="h-4 w-4"
@@ -2236,313 +2248,218 @@ export default function NhapKho() {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth="2"
-                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                        d="M6 18L18 6M6 6l12 12"
                       />
                     </svg>
                   </button>
-                  <button
-                    onClick={() => handleDeleteReceipt(selectedReceipt.id)}
-                    aria-label="Xóa phiếu"
-                    title="Xóa phiếu"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-600 text-white transition-colors hover:bg-red-700"
+                )}
+                <button
+                  onClick={() => void handleEditReceipt(selectedReceipt)}
+                  aria-label="Sửa phiếu"
+                  title="Sửa phiếu"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500 text-white transition-colors hover:bg-amber-600"
+                >
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    <svg
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-xl border border-sky-200 bg-white/80 p-4 backdrop-blur-sm dark:border-sky-500/30 dark:bg-sky-500/10">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-xs font-medium uppercase tracking-wide text-sky-700 dark:text-sky-300">
-                    Tổng giá trị
-                  </p>
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300">
-                    <svg
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 10v-1m-6-6h12"
-                      />
-                    </svg>
-                  </span>
-                </div>
-                <p className="mt-2 text-xl font-semibold text-sky-900 dark:text-sky-100">
-                  {totalAmount.toLocaleString("vi-VN")}₫
-                </p>
-              </div>
-              <div className="rounded-xl border border-indigo-200 bg-white/80 p-4 backdrop-blur-sm dark:border-indigo-500/30 dark:bg-indigo-500/10">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-xs font-medium uppercase tracking-wide text-indigo-700 dark:text-indigo-300">
-                    Số mặt hàng
-                  </p>
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
-                    <svg
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M20 13V7a2 2 0 00-2-2h-3M4 7v10a2 2 0 002 2h12a2 2 0 002-2v-4M8 7h4"
-                      />
-                    </svg>
-                  </span>
-                </div>
-                <p className="mt-2 text-xl font-semibold text-indigo-900 dark:text-indigo-100">
-                  {selectedReceipt.materials.length}
-                </p>
-              </div>
-              <div className="rounded-xl border border-emerald-200 bg-white/80 p-4 backdrop-blur-sm dark:border-emerald-500/30 dark:bg-emerald-500/10">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-xs font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
-                    Tổng số lượng
-                  </p>
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
-                    <svg
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M3 7h18M6 11h12m-9 4h6"
-                      />
-                    </svg>
-                  </span>
-                </div>
-                <p className="mt-2 text-xl font-semibold text-emerald-900 dark:text-emerald-100">
-                  {totalQuantity.toLocaleString("vi-VN")}
-                </p>
-              </div>
-              <div className="rounded-xl border border-amber-200 bg-white/80 p-4 backdrop-blur-sm dark:border-amber-500/30 dark:bg-amber-500/10">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">
-                    Đơn giá trung bình
-                  </p>
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
-                    <svg
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M12 6v12m-4-8h8"
-                      />
-                    </svg>
-                  </span>
-                </div>
-                <p className="mt-2 text-xl font-semibold text-amber-900 dark:text-amber-100">
-                  {averagePrice.toLocaleString("vi-VN")}₫
-                </p>
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                    />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => handleDeleteReceipt(selectedReceipt.id)}
+                  aria-label="Xóa phiếu"
+                  title="Xóa phiếu"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-600 text-white transition-colors hover:bg-red-700"
+                >
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                </button>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <div className="module-surface lg:col-span-2 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03]">
-              <div className="mb-6 grid grid-cols-1 gap-4 border-b border-gray-200 pb-6 sm:grid-cols-2 dark:border-gray-700">
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Số phiếu
-                  </p>
-                  <span className="mt-1 inline-flex rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1 text-sm font-semibold text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white">
-                    {selectedReceipt.soPhieu}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Nhà cung cấp
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                    {selectedReceipt.tenNCC || "Chưa có"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Kho nhập
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                    {selectedReceipt.kho || "Chưa có"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Số chứng từ
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                    {selectedReceipt.soChungTu || "Chưa có"}
-                  </p>
-                </div>
-              </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-xl border border-sky-200 bg-white/80 p-4 backdrop-blur-sm dark:border-sky-500/30 dark:bg-sky-500/10">
+              <p className="text-xs font-medium uppercase tracking-wide text-sky-700 dark:text-sky-300">
+                Tổng giá trị
+              </p>
+              <p className="mt-2 text-xl font-semibold text-sky-900 dark:text-sky-100">
+                {totalAmount.toLocaleString("vi-VN")}₫
+              </p>
+            </div>
+            <div className="rounded-xl border border-indigo-200 bg-white/80 p-4 backdrop-blur-sm dark:border-indigo-500/30 dark:bg-indigo-500/10">
+              <p className="text-xs font-medium uppercase tracking-wide text-indigo-700 dark:text-indigo-300">
+                Số mặt hàng
+              </p>
+              <p className="mt-2 text-xl font-semibold text-indigo-900 dark:text-indigo-100">
+                {selectedReceipt.materials.length}
+              </p>
+            </div>
+            <div className="rounded-xl border border-emerald-200 bg-white/80 p-4 backdrop-blur-sm dark:border-emerald-500/30 dark:bg-emerald-500/10">
+              <p className="text-xs font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                Tổng số lượng
+              </p>
+              <p className="mt-2 text-xl font-semibold text-emerald-900 dark:text-emerald-100">
+                {totalQuantity.toLocaleString("vi-VN")}
+              </p>
+            </div>
+          </div>
+        </div>
 
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                  Danh sách hàng hóa
-                </h3>
-                <span className="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                  {selectedReceipt.materials.length} dòng
+        <div className="module-view grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="module-surface lg:col-span-2 rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03] p-6">
+            <div className="mb-6 grid grid-cols-1 gap-4 border-b border-gray-200 pb-6 sm:grid-cols-2 dark:border-gray-700">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Số phiếu
+                </p>
+                <span className="mt-1 inline-flex rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1 text-sm font-semibold text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white">
+                  {selectedReceipt.soPhieu}
                 </span>
-              </div>
-
-              <div className="overflow-x-auto custom-scrollbar rounded-xl border border-gray-200 dark:border-gray-700">
-                <table className="module-table w-full text-sm">
-                  <thead className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
-                        STT
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
-                        Mã
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
-                        Tên hàng
-                      </th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
-                        Đơn vị
-                      </th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
-                        Số lượng
-                      </th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
-                        Đơn giá
-                      </th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
-                        Thành tiền
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {selectedReceipt.materials.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={7}
-                          className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400"
-                        >
-                          Phiếu nhập chưa có hàng hóa.
-                        </td>
-                      </tr>
-                    ) : (
-                      selectedReceipt.materials.map((m, idx) => (
-                        <tr
-                          key={m.id}
-                          className="transition-colors odd:bg-white even:bg-gray-50/60 hover:bg-sky-50/70 dark:odd:bg-transparent dark:even:bg-gray-800/30 dark:hover:bg-sky-900/20"
-                        >
-                          <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
-                            {idx + 1}
-                          </td>
-                          <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
-                            {m.maHang}
-                          </td>
-                          <td className="px-4 py-3 text-gray-900 dark:text-white">
-                            {m.tenHang}
-                          </td>
-                          <td className="px-4 py-3 text-center text-gray-600 dark:text-gray-400">
-                            {m.donVi}
-                          </td>
-                          <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">
-                            {Number(m.soLuong || 0).toLocaleString("vi-VN")}
-                          </td>
-                          <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">
-                            {Number(m.donGia || 0).toLocaleString("vi-VN")}₫
-                          </td>
-                          <td className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">
-                            {(Number(m.soLuong || 0) * Number(m.donGia || 0)).toLocaleString("vi-VN")}₫
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
               </div>
             </div>
 
-            <div className="space-y-3 lg:sticky lg:top-4 lg:self-start">
-              <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 dark:border-gray-700 dark:from-white/5 dark:to-gray-800/30">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Thông tin</p>
-                
-                <div className="grid grid-cols-2 gap-2 mb-2">
-                  <div className="rounded-lg bg-white p-2.5 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 col-span-2">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Ngày tạo</p>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                      {selectedReceipt.ngayTao ? new Date(selectedReceipt.ngayTao).toLocaleDateString("vi-VN") : "-"}
-                    </p>
-                  </div>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
+              Danh Sách Hàng Hóa
+            </h3>
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="module-table w-full text-sm">
+                <thead className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
+                      Mã
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
+                      Tên Hàng
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
+                      Đơn vị
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
+                      SL
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
+                      Đơn Giá
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
+                      Thành Tiền
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {selectedReceipt.materials.map((m) => (
+                    <tr
+                      key={m.id}
+                      className="hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                    >
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
+                        {m.maHang}
+                      </td>
+                      <td className="px-4 py-3 text-gray-900 dark:text-white">
+                        {m.tenHang}
+                      </td>
+                      <td className="px-4 py-3 text-center text-gray-600 dark:text-gray-400">
+                        {m.donVi}
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">
+                        {m.soLuong}
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">
+                        {m.donGia.toLocaleString("vi-VN")}₫
+                      </td>
+                      <td className="px-4 py-3 text-right font-medium text-gray-900 dark:text-white">
+                        {(m.soLuong * m.donGia).toLocaleString("vi-VN")}₫
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-                  <div className="rounded-lg bg-white p-2.5 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 col-span-2">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Nhà cung cấp</p>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                      {selectedReceipt.tenNCC || "-"}
-                    </p>
-                  </div>
+          <div className="space-y-3 lg:sticky lg:top-4 lg:self-start">
+            <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 dark:border-gray-700 dark:from-white/5 dark:to-gray-800/30">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">
+                Thông tin
+              </p>
 
-                  <div className="rounded-lg bg-white p-2.5 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 col-span-2">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Kho</p>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                      {selectedReceipt.kho || "-"}
-                    </p>
-                  </div>
-
-                  <div className="rounded-lg bg-white p-2.5 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 col-span-2">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Trạng thái</p>
-                    <span className={`status-pill ${getReceiptStatusClass(selectedReceipt.trangThai)}`}>
-                      {getReceiptStatusLabel(selectedReceipt.trangThai)}
-                    </span>
-                  </div>
-                </div>
-
-                {(selectedReceipt.soHoaDonNCC || selectedReceipt.soChungTu) && (
-                  <div className="text-xs space-y-1 mb-2 text-gray-600 dark:text-gray-400">
-                    {selectedReceipt.soHoaDonNCC && (
-                      <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-blue-50 dark:bg-blue-500/10">
-                        <span className="text-blue-700 dark:text-blue-300">Số hóa đơn nhà cung cấp:</span>
-                        <span className="font-medium text-blue-900 dark:text-blue-100">{selectedReceipt.soHoaDonNCC}</span>
-                      </div>
-                    )}
-                    {selectedReceipt.soChungTu && (
-                      <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-amber-50 dark:bg-amber-500/10">
-                        <span className="text-amber-700 dark:text-amber-300">Số chứng từ:</span>
-                        <span className="font-medium text-amber-900 dark:text-amber-100">{selectedReceipt.soChungTu}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-500/10 dark:to-teal-500/10 p-3 border border-emerald-200 dark:border-emerald-500/30">
-                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 mb-1">TỔNG GIÁ TRỊ</p>
-                  <p className="text-xl font-bold text-emerald-900 dark:text-emerald-100">
-                    {totalAmount.toLocaleString("vi-VN")}₫
+              <div className="mb-2 grid grid-cols-2 gap-2">
+                <div className="col-span-2 rounded-lg border border-gray-100 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800/50">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Ngày tạo</p>
+                  <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
+                    {new Date(selectedReceipt.ngayTao).toLocaleDateString("vi-VN")}
                   </p>
                 </div>
+
+                <div className="col-span-2 rounded-lg border border-gray-100 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800/50">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Người nhận</p>
+                  <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
+                    {selectedReceipt.receiverName || "-"}
+                  </p>
+                </div>
+
+                <div className="col-span-2 rounded-lg border border-gray-100 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800/50">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Kho xuất</p>
+                  <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
+                    {selectedReceipt.kho || "-"}
+                  </p>
+                </div>
+
+                <div className="col-span-2 rounded-lg border border-gray-100 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800/50">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Trạng thái</p>
+                  <span className={`status-pill mt-1 ${getReceiptStatusClass(selectedReceipt.trangThai)}`}>
+                    {getReceiptStatusLabel(selectedReceipt.trangThai)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mb-2 rounded-lg border border-blue-100 bg-gradient-to-r from-blue-50 to-sky-50 p-2.5 dark:border-blue-500/20 dark:from-blue-500/10 dark:to-sky-500/10">
+                <p className="text-xs font-semibold uppercase text-blue-600 dark:text-blue-300">Số phiếu</p>
+                <p className="mt-1 text-sm font-bold text-blue-800 dark:text-blue-100">
+                  {selectedReceipt.soPhieu || "-"}
+                </p>
+              </div>
+
+              <div className="mb-2 rounded-lg border border-amber-100 bg-gradient-to-r from-amber-50 to-orange-50 p-2.5 dark:border-amber-500/20 dark:from-amber-500/10 dark:to-orange-500/10">
+                <p className="text-xs font-semibold uppercase text-amber-600 dark:text-amber-300">Số chứng từ</p>
+                <p className="mt-1 text-sm font-bold text-amber-800 dark:text-amber-100">
+                  {selectedReceipt.soChungTu || "-"}
+                </p>
+              </div>
+
+              <div className="mb-3 rounded-lg border border-gray-100 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800/50">
+                <p className="text-xs text-gray-500 dark:text-gray-400">Lý do xuất</p>
+                <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">
+                  {selectedReceipt.lyDo || "-"}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-emerald-100 bg-gradient-to-r from-emerald-50 to-teal-50 p-3 dark:border-emerald-500/20 dark:from-emerald-500/10 dark:to-teal-500/10">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-300">
+                  Tổng giá trị
+                </p>
+                <p className="mt-1 text-xl font-bold text-emerald-700 dark:text-emerald-100">
+                  {totalAmount.toLocaleString("vi-VN")}₫
+                </p>
               </div>
             </div>
           </div>
@@ -2550,4 +2467,6 @@ export default function NhapKho() {
       </>
     );
   }
+
+  return null;
 }
