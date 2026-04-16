@@ -4,6 +4,7 @@ import axios from "axios";
 import { useEffect, useRef, useState } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
+import CustomSelect from "../../components/common/CustomSelect";
 import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
 import { exportService } from "../../services/exportService";
@@ -1328,16 +1329,15 @@ export default function XuatKho() {
                   )}
                 </div>
 
-                <select
+                <CustomSelect
                   value={sortBy}
-                  onChange={(e) =>
-                    setSortBy(e.target.value as "ngayTao" | "tongTien")
-                  }
-                  className="flex-1 sm:flex-initial px-3 py-2 pr-8 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="ngayTao">Sắp xếp theo ngày</option>
-                  <option value="tongTien">Sắp xếp theo giá trị</option>
-                </select>
+                  onChange={(value) => setSortBy(value as "ngayTao" | "tongTien")}
+                  options={[
+                    { value: "ngayTao", label: "Sắp xếp theo ngày" },
+                    { value: "tongTien", label: "Sắp xếp theo giá trị" },
+                  ]}
+                  buttonClassName="flex-1 sm:flex-initial sm:min-w-[180px]"
+                />
 
                 <button
                   onClick={() =>
@@ -1654,17 +1654,16 @@ export default function XuatKho() {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Lý Do Xuất
               </label>
-              <select
+              <CustomSelect
                 value={formData.lyDo}
-                onChange={(e) =>
-                  setFormData({ ...formData, lyDo: e.target.value })
-                }
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="Bán hàng">Bán hàng</option>
-                <option value="Hỏng hóc">Hỏng hóc</option>
-                <option value="Khác">Khác</option>
-              </select>
+                onChange={(value) => setFormData({ ...formData, lyDo: value })}
+                options={[
+                  { value: "Bán hàng", label: "Bán hàng" },
+                  { value: "Hỏng hóc", label: "Hỏng hóc" },
+                  { value: "Khác", label: "Khác" },
+                ]}
+                buttonClassName="w-full"
+              />
             </div>
 
             <div>

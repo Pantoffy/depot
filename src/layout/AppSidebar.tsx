@@ -41,6 +41,7 @@ const navItems: NavItem[] = [
       { name: "Danh mục nguyên liệu", path: "/quan-ly-nguyen-lieu", pro: false },
       { name: "Nhà cung cấp", path: "/quan-ly-nha-cung-cap", pro: false },
       { name: "Quản lý kho", path: "/quan-ly-kho", pro: false },
+      { name: "Tồn kho theo kho", path: "/ton-kho-theo-kho", pro: false },
     ],
   },
   {
@@ -54,10 +55,7 @@ const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const location = useLocation();
 
-  const [openSubmenu, setOpenSubmenu] = useState<{
-    type: "main" | "others";
-    index: number;
-  } | null>(null);
+  const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
   const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>(
     {}
   );
@@ -70,52 +68,35 @@ const AppSidebar: React.FC = () => {
   );
 
   useEffect(() => {
-    let submenuMatched = false;
     ["main"].forEach((menuType) => {
       const items = navItems;
       items.forEach((nav, index) => {
         if (nav.subItems) {
           nav.subItems.forEach((subItem) => {
             if (isActive(subItem.path)) {
-              setOpenSubmenu({
-                type: menuType as "main" | "others",
-                index,
-              });
-              submenuMatched = true;
+              const key = `${menuType}-${index}`;
+              setOpenSubmenus((prev) => ({ ...prev, [key]: true }));
             }
           });
         }
       });
     });
-
-    if (!submenuMatched) {
-      setOpenSubmenu(null);
-    }
   }, [location, isActive]);
 
   useEffect(() => {
-    if (openSubmenu !== null) {
-      const key = `${openSubmenu.type}-${openSubmenu.index}`;
-      if (subMenuRefs.current[key]) {
-        setSubMenuHeight((prevHeights) => ({
-          ...prevHeights,
-          [key]: subMenuRefs.current[key]?.scrollHeight || 0,
-        }));
-      }
-    }
-  }, [openSubmenu]);
+    const heights: Record<string, number> = {};
+    Object.entries(subMenuRefs.current).forEach(([key, node]) => {
+      heights[key] = node?.scrollHeight || 0;
+    });
+    setSubMenuHeight(heights);
+  }, [openSubmenus]);
 
   const handleSubmenuToggle = (index: number, menuType: "main" | "others") => {
-    setOpenSubmenu((prevOpenSubmenu) => {
-      if (
-        prevOpenSubmenu &&
-        prevOpenSubmenu.type === menuType &&
-        prevOpenSubmenu.index === index
-      ) {
-        return null;
-      }
-      return { type: menuType, index };
-    });
+    const key = `${menuType}-${index}`;
+    setOpenSubmenus((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
   };
 
   const renderMenuItems = (items: NavItem[], menuType: "main" | "others") => (
@@ -126,7 +107,7 @@ const AppSidebar: React.FC = () => {
             <button
               onClick={() => handleSubmenuToggle(index, menuType)}
               className={`menu-item group ${
-                openSubmenu?.type === menuType && openSubmenu?.index === index
+                openSubmenus[`${menuType}-${index}`]
                   ? "menu-item-active"
                   : "menu-item-inactive"
               } cursor-pointer ${
@@ -137,7 +118,7 @@ const AppSidebar: React.FC = () => {
             >
               <span
                 className={`menu-item-icon-size  ${
-                  openSubmenu?.type === menuType && openSubmenu?.index === index
+                  openSubmenus[`${menuType}-${index}`]
                     ? "menu-item-icon-active"
                     : "menu-item-icon-inactive"
                 }`}
@@ -150,8 +131,7 @@ const AppSidebar: React.FC = () => {
               {(isExpanded || isHovered || isMobileOpen) && (
                 <ChevronDownIcon
                   className={`ml-auto w-5 h-5 transition-transform duration-200 ${
-                    openSubmenu?.type === menuType &&
-                    openSubmenu?.index === index
+                    openSubmenus[`${menuType}-${index}`]
                       ? "rotate-180 text-brand-500"
                       : ""
                   }`}
@@ -189,7 +169,7 @@ const AppSidebar: React.FC = () => {
               className="overflow-hidden transition-all duration-300"
               style={{
                 height:
-                  openSubmenu?.type === menuType && openSubmenu?.index === index
+                  openSubmenus[`${menuType}-${index}`]
                     ? `${subMenuHeight[`${menuType}-${index}`]}px`
                     : "0px",
               }}

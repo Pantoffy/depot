@@ -102,6 +102,53 @@
   @apply border-brand-500 bg-brand-500;
 }
 
+.dashboard-shell {
+  background:
+    radial-gradient(980px 360px at 95% -15%, rgba(14, 165, 233, 0.1), transparent 62%),
+    radial-gradient(860px 300px at -8% 18%, rgba(16, 185, 129, 0.08), transparent 64%),
+    linear-gradient(180deg, #f8fafc 0%, #f1f5f9 36%, #ffffff 72%);
+}
+
+.dark .dashboard-shell {
+  background:
+    radial-gradient(900px 350px at 100% -15%, rgba(13, 148, 136, 0.2), transparent 60%),
+    radial-gradient(900px 350px at -10% 20%, rgba(14, 116, 144, 0.24), transparent 62%),
+    linear-gradient(180deg, rgba(3, 7, 18, 0.92) 0%, rgba(2, 6, 23, 1) 70%);
+}
+
+.dashboard-panel {
+  @apply rounded-2xl border border-slate-200 bg-white shadow-sm backdrop-blur-sm dark:border-slate-800/80 dark:bg-slate-950/40;
+}
+
+.dashboard-kpi-card {
+  @apply relative overflow-hidden rounded-2xl border border-white/15 bg-white/10 backdrop-blur-sm;
+}
+
+.dashboard-kpi-card::after {
+  content: "";
+  position: absolute;
+  inset: auto -20% -60% -20%;
+  height: 70%;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.28), transparent 70%);
+  pointer-events: none;
+}
+
+.dashboard-float {
+  animation: dashboardFloat 5.8s ease-in-out infinite;
+}
+
+@keyframes dashboardFloat {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}
+
 /* third-party libraries CSS */
 .apexcharts-legend-text {
   @apply !text-gray-700 dark:!text-gray-400;
@@ -383,6 +430,14 @@ span.flatpickr-weekday,
   color: #111827;
 }
 
+.form-tone-sync select {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.form-tone-sync select:hover {
+  filter: brightness(0.99);
+}
+
 .form-tone-sync input::placeholder,
 .form-tone-sync textarea::placeholder {
   color: #6b7280;
@@ -412,6 +467,20 @@ span.flatpickr-weekday,
 .dark .form-tone-sync input::placeholder,
 .dark .form-tone-sync textarea::placeholder {
   color: #94a3b8;
+}
+
+/* Native select popup on Windows can ignore dark background but keep light text.
+   Force option text/background for readability in dropdown list. */
+.form-tone-sync select option,
+.form-tone-sync select optgroup {
+  color: #111827;
+  background-color: #ffffff;
+}
+
+.dark .form-tone-sync select option,
+.dark .form-tone-sync select optgroup {
+  color: #111827;
+  background-color: #ffffff;
 }
 
 .module-surface {

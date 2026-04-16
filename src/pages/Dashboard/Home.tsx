@@ -6,6 +6,7 @@ import { materialService, Material } from "../../services/materialService";
 import { supplierService, Supplier } from "../../services/supplierService";
 import { warehouseService, Warehouse } from "../../services/warehouseService";
 import { importService, ImportReceipt } from "../../services/importService";
+import { exportService, ExportReceipt } from "../../services/exportService";
 import { unitService, Unit, DEFAULT_UNITS } from "../../services/unitService";
 
 // ========== COMPONENTS ==========
@@ -25,24 +26,24 @@ const DateRangeSelector = ({
   onReset: () => void;
 }) => {
   return (
-    <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20 border border-blue-100 dark:border-blue-800/50 rounded-lg p-4">
-      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Lọc theo ngày:</span>
+    <div className="dashboard-panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300">Khoảng thời gian theo dõi</span>
       <div className="flex flex-col sm:flex-row gap-2 flex-1">
         <input
           type="date"
           value={startDate}
           onChange={(e) => onStartDateChange(e.target.value)}
-          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:ring-cyan-900"
         />
         <input
           type="date"
           value={endDate}
           onChange={(e) => onEndDateChange(e.target.value)}
-          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:ring-cyan-900"
         />
         <button
           onClick={onReset}
-          className="px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-md transition-colors"
+          className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-semibold text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300 dark:hover:bg-cyan-900/50"
         >
           Đặt lại
         </button>
@@ -68,26 +69,36 @@ const StatCard = ({
   onClick?: () => void;
   trend?: { value: number; isIncrease: boolean };
 }) => {
-  const colorMap: Record<string, { bg: string; iconBg: string }> = {
+  const colorMap: Record<string, { card: string; iconBg: string; trendUp: string; trendDown: string }> = {
     blue: {
-      bg: "from-blue-500 to-blue-600",
-      iconBg: "bg-blue-400/30",
+      card: "border-cyan-200/70 bg-cyan-50/80 dark:border-cyan-800/60 dark:bg-cyan-900/20",
+      iconBg: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300",
+      trendUp: "text-cyan-700 dark:text-cyan-300",
+      trendDown: "text-rose-600 dark:text-rose-300",
     },
     green: {
-      bg: "from-green-500 to-green-600",
-      iconBg: "bg-green-400/30",
+      card: "border-emerald-200/70 bg-emerald-50/80 dark:border-emerald-800/60 dark:bg-emerald-900/20",
+      iconBg: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+      trendUp: "text-emerald-700 dark:text-emerald-300",
+      trendDown: "text-rose-600 dark:text-rose-300",
     },
     orange: {
-      bg: "from-orange-500 to-orange-600",
-      iconBg: "bg-orange-400/30",
+      card: "border-amber-200/70 bg-amber-50/80 dark:border-amber-800/60 dark:bg-amber-900/20",
+      iconBg: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+      trendUp: "text-amber-700 dark:text-amber-300",
+      trendDown: "text-rose-600 dark:text-rose-300",
     },
     red: {
-      bg: "from-red-500 to-red-600",
-      iconBg: "bg-red-400/30",
+      card: "border-rose-200/70 bg-rose-50/80 dark:border-rose-800/60 dark:bg-rose-900/20",
+      iconBg: "bg-rose-500/15 text-rose-700 dark:text-rose-300",
+      trendUp: "text-rose-700 dark:text-rose-300",
+      trendDown: "text-rose-600 dark:text-rose-300",
     },
     purple: {
-      bg: "from-purple-500 to-purple-600",
-      iconBg: "bg-purple-400/30",
+      card: "border-indigo-200/70 bg-indigo-50/80 dark:border-indigo-800/60 dark:bg-indigo-900/20",
+      iconBg: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300",
+      trendUp: "text-indigo-700 dark:text-indigo-300",
+      trendDown: "text-rose-600 dark:text-rose-300",
     },
   };
 
@@ -96,26 +107,27 @@ const StatCard = ({
   return (
     <div
       onClick={onClick}
-      className={`relative overflow-hidden rounded-xl bg-gradient-to-br ${c.bg} p-5 text-white shadow-lg transition-all hover:shadow-xl hover:scale-105 ${
+      className={`group relative overflow-hidden rounded-2xl border p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${c.card} ${
         onClick ? "cursor-pointer" : ""
       }`}
     >
+      <div className="pointer-events-none absolute -right-6 -top-8 h-20 w-20 rounded-full bg-white/50 blur-2xl dark:bg-slate-200/10" />
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-white/80">{title}</p>
-          <p className="mt-1 text-3xl font-bold">{value}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-300">{title}</p>
+          <p className="mt-1 text-3xl font-bold text-slate-900 dark:text-white">{value}</p>
           <div className="mt-2 flex items-center gap-2">
             {subtitle && (
-              <p className="text-xs text-white/70">{subtitle}</p>
+              <p className="text-xs text-slate-600 dark:text-slate-400">{subtitle}</p>
             )}
             {trend && (
-              <span className={`text-xs font-semibold ${trend.isIncrease ? 'text-green-200' : 'text-red-200'}`}>
+              <span className={`text-xs font-semibold ${trend.isIncrease ? c.trendUp : c.trendDown}`}>
                 {trend.isIncrease ? '↑' : '↓'} {Math.abs(trend.value)}%
               </span>
             )}
           </div>
         </div>
-        <div className={`rounded-xl ${c.iconBg} p-3 transition-transform group-hover:scale-110`}>
+        <div className={`rounded-xl p-3 transition-transform group-hover:scale-110 ${c.iconBg}`}>
           {icon}
         </div>
       </div>
@@ -143,19 +155,19 @@ const VerticalBarChart = ({
   const maxValue = Math.max(...data.map((item) => item.value), 1);
 
   return (
-    <div className="h-64 rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/40">
+    <div className="h-64 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-gray-800 dark:bg-gray-900/40">
       <p className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">{unitLabel}</p>
       <div className="flex h-full items-end gap-2">
         {data.map((item) => {
           const height = Math.max(6, (item.value / maxValue) * 100);
           return (
-            <div key={item.label} className="flex flex-1 flex-col items-center gap-2">
+            <div key={item.label} className="flex h-full flex-1 flex-col items-center gap-2">
               <span className="text-[10px] font-semibold text-gray-600 dark:text-gray-300">
                 {valueFormatter(item.value)}
               </span>
-              <div className="flex h-full w-full items-end">
+              <div className="flex w-full flex-1 items-end">
                 <div
-                  className="w-full rounded-t-md bg-gradient-to-t from-blue-600 to-cyan-400 transition-all hover:from-blue-700 hover:to-cyan-500"
+                  className="w-full rounded-t-md bg-gradient-to-t from-cyan-700 to-teal-400 transition-all hover:from-cyan-800 hover:to-teal-500"
                   style={{ height: `${height}%` }}
                   title={`${item.label}: ${valueFormatter(item.value)}`}
                 />
@@ -164,99 +176,6 @@ const VerticalBarChart = ({
             </div>
           );
         })}
-      </div>
-    </div>
-  );
-};
-
-// Line Chart Component
-const LineChart = ({
-  data,
-}: {
-  data: { label: string; value: number }[];
-}) => {
-  if (data.length < 2) {
-    return (
-      <div className="h-56 rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/40 flex items-center justify-center">
-        <p className="text-sm text-gray-500 dark:text-gray-400">Cần ít nhất 2 điểm dữ liệu</p>
-      </div>
-    );
-  }
-
-  const maxValue = Math.max(...data.map((item) => item.value), 1);
-  const points = data.map((item, idx) => ({
-    label: item.label,
-    value: item.value,
-    x: (idx / (data.length - 1)) * 100,
-    y: 100 - (item.value / maxValue) * 100,
-  }));
-
-  const pathD = points
-    .map((point, idx) => `${idx === 0 ? "M" : "L"} ${point.x}% ${point.y}%`)
-    .join(" ");
-
-  return (
-    <div className="h-56 rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/40">
-      <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
-        {/* Grid lines */}
-        {[0, 25, 50, 75, 100].map((line) => (
-          <line
-            key={line}
-            x1="0"
-            y1={line}
-            x2="100"
-            y2={line}
-            stroke="currentColor"
-            className="text-gray-200 dark:text-gray-700"
-            strokeWidth="0.5"
-            vectorEffect="non-scaling-stroke"
-          />
-        ))}
-
-        {/* Fill area under curve */}
-        <defs>
-          <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="rgba(96, 165, 250, 0.3)" />
-            <stop offset="100%" stopColor="rgba(96, 165, 250, 0.05)" />
-          </linearGradient>
-        </defs>
-
-        {/* Area fill */}
-        <path
-          d={`${pathD} L 100 100 L 0 100 Z`}
-          fill="url(#areaGradient)"
-        />
-
-        {/* Line */}
-        <path
-          d={pathD}
-          stroke="rgb(59, 130, 246)"
-          strokeWidth="2"
-          fill="none"
-          vectorEffect="non-scaling-stroke"
-        />
-
-        {/* Points */}
-        {points.map((point, idx) => (
-          <circle
-            key={idx}
-            cx={point.x}
-            cy={point.y}
-            r="1.5"
-            fill="rgb(59, 130, 246)"
-            vectorEffect="non-scaling-stroke"
-          />
-        ))}
-      </svg>
-
-      {/* Labels */}
-      <div className="mt-4 flex justify-between items-end gap-2 text-xs text-gray-500 dark:text-gray-400">
-        {points.map((point, idx) => (
-          <div key={idx} className="text-center" style={{ flex: 1 }}>
-            <div className="font-medium">{point.value}</div>
-            <div className="text-[10px]">{point.label}</div>
-          </div>
-        ))}
       </div>
     </div>
   );
@@ -402,6 +321,7 @@ export default function Home() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [importChartMode, setImportChartMode] = useState<"count" | "amount">("count");
+  const [exportChartMode, setExportChartMode] = useState<"count" | "amount">("count");
 
   // Date range state
   const [startDate, setStartDate] = useState(() => {
@@ -418,6 +338,7 @@ export default function Home() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [imports, setImports] = useState<ImportReceipt[]>([]);
+  const [exports, setExports] = useState<ExportReceipt[]>([]);
   const [units, setUnits] = useState<Unit[]>(DEFAULT_UNITS);
 
   useEffect(() => {
@@ -427,17 +348,19 @@ export default function Home() {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [mats, sups, whs, imps] = await Promise.allSettled([
+      const [mats, sups, whs, imps, exps] = await Promise.allSettled([
         materialService.getAllMaterials(),
         supplierService.getAllSuppliers(),
         warehouseService.getAllWarehouses(),
         importService.getAllImportReceipts(),
+        exportService.getAllExportReceipts(),
       ]);
 
       if (mats.status === "fulfilled") setMaterials(mats.value);
       if (sups.status === "fulfilled") setSuppliers(sups.value);
       if (whs.status === "fulfilled") setWarehouses(whs.value);
       if (imps.status === "fulfilled") setImports(imps.value);
+      if (exps.status === "fulfilled") setExports(exps.value);
 
       // Load units
       try {
@@ -470,6 +393,15 @@ export default function Home() {
         return importDate >= startDateObj && importDate <= endDateObj;
       }),
     [imports, startDate, endDate]
+  );
+
+  const filteredExports = useMemo(
+    () =>
+      exports.filter((receipt) => {
+        const exportDate = new Date(receipt.exportDate || receipt.createdAt);
+        return exportDate >= startDateObj && exportDate <= endDateObj;
+      }),
+    [exports, startDate, endDate]
   );
 
   const activeMaterials = materials.filter((m) => m.status === "Đang kinh doanh");
@@ -552,6 +484,45 @@ export default function Home() {
     return months;
   }, [filteredImports]);
 
+  const monthlyExportSeries = useMemo(() => {
+    const now = new Date();
+    const months = Array.from({ length: 6 }, (_, idx) => {
+      const date = new Date(now.getFullYear(), now.getMonth() - (5 - idx), 1);
+      const month = `${date.getMonth() + 1}`.padStart(2, "0");
+      const key = `${date.getFullYear()}-${month}`;
+      return {
+        key,
+        label: date.toLocaleDateString("vi-VN", { month: "2-digit" }),
+        count: 0,
+        amount: 0,
+      };
+    });
+
+    const monthIndexMap = Object.fromEntries(months.map((month, idx) => [month.key, idx]));
+
+    filteredExports.forEach((receipt) => {
+      const rawDate = receipt.exportDate || receipt.createdAt;
+      const date = new Date(rawDate);
+
+      if (Number.isNaN(date.getTime())) {
+        return;
+      }
+
+      const month = `${date.getMonth() + 1}`.padStart(2, "0");
+      const key = `${date.getFullYear()}-${month}`;
+      const index = monthIndexMap[key];
+
+      if (index === undefined) {
+        return;
+      }
+
+      months[index].count += 1;
+      months[index].amount += Number(receipt.totalAmount || 0);
+    });
+
+    return months;
+  }, [filteredExports]);
+
   const importChartData = useMemo(
     () =>
       monthlyImportSeries.map((month) => ({
@@ -561,10 +532,24 @@ export default function Home() {
     [monthlyImportSeries, importChartMode]
   );
 
+  const exportChartData = useMemo(
+    () =>
+      monthlyExportSeries.map((month) => ({
+        label: month.label,
+        value: exportChartMode === "count" ? month.count : Math.round(month.amount / 1000000),
+      })),
+    [monthlyExportSeries, exportChartMode]
+  );
+
   const totalImportAmountIn6Months = monthlyImportSeries.reduce((sum, month) => sum + month.amount, 0);
+  const totalExportAmountIn6Months = monthlyExportSeries.reduce((sum, month) => sum + month.amount, 0);
   const peakImportMonth = monthlyImportSeries.reduce(
     (max, current) => (current.count > max.count ? current : max),
     monthlyImportSeries[0] || { key: "", label: "", count: 0, amount: 0 }
+  );
+  const peakExportMonth = monthlyExportSeries.reduce(
+    (max, current) => (current.count > max.count ? current : max),
+    monthlyExportSeries[0] || { key: "", label: "", count: 0, amount: 0 }
   );
 
   const healthyStockCount = activeMaterials.filter((m) => m.stockQuantity > 10).length;
@@ -639,6 +624,7 @@ export default function Home() {
       <PageMeta title="Tổng quan | Quản lý kho" description="Tổng quan hệ thống quản lý kho" />
       <PageBreadcrumb pageTitle="Tổng quan" />
 
+      <div className="dashboard-shell rounded-3xl p-3 sm:p-5">
       {/* Date Range Selector */}
       <div className="mb-6">
         <DateRangeSelector
@@ -683,40 +669,40 @@ export default function Home() {
       </div>
 
       {/* Hero overview */}
-      <div className="mb-6 overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-900 via-blue-900 to-cyan-900 text-white shadow-xl">
+      <div className="mb-6 overflow-hidden rounded-3xl border border-cyan-200 bg-gradient-to-r from-cyan-700 via-cyan-600 to-teal-600 text-white shadow-xl dark:border-slate-800/70 dark:from-slate-900 dark:via-cyan-900 dark:to-teal-900">
         <div className="relative p-6 lg:p-7">
-          <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-cyan-300/20 blur-2xl" />
-          <div className="pointer-events-none absolute -bottom-20 left-1/3 h-44 w-44 rounded-full bg-blue-300/20 blur-2xl" />
+          <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-white/20 blur-2xl" />
+          <div className="pointer-events-none absolute -bottom-20 left-1/3 h-44 w-44 rounded-full bg-teal-200/30 blur-2xl dark:bg-emerald-300/20" />
 
           <div className="relative z-10 grid grid-cols-1 gap-5 lg:grid-cols-[1.3fr_1fr] lg:items-end">
             <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-cyan-200/80">Warehouse Control</p>
+              <p className="text-xs uppercase tracking-[0.22em] text-cyan-100/90">Warehouse Control Room</p>
               <h2 className="mt-2 text-2xl font-bold leading-tight lg:text-3xl">Tổng Quan Vận Hành Kho</h2>
-              <p className="mt-2 text-sm text-slate-200">
+              <p className="mt-2 max-w-2xl text-sm text-cyan-50/95">
                 {todayLabel}. Hệ thống hiện có {materials.length} nguyên liệu, {filteredImports.length} phiếu nhập trong kỳ và {pendingImports} phiếu đang chờ xác nhận.
               </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl border border-white/20 bg-white/10 p-3 backdrop-blur-sm">
-                <p className="text-[11px] uppercase text-slate-200">Sức khỏe tồn kho</p>
+              <div className="dashboard-kpi-card p-3 dashboard-float">
+                <p className="text-[11px] uppercase text-cyan-50">Sức khỏe tồn kho</p>
                 <p className="mt-1 text-xl font-bold">{inventoryHealthRate}%</p>
-                <p className="text-xs text-slate-200">Mức tồn ổn định</p>
+                <p className="text-xs text-cyan-50/90">Mức tồn ổn định</p>
               </div>
-              <div className="rounded-xl border border-white/20 bg-white/10 p-3 backdrop-blur-sm">
-                <p className="text-[11px] uppercase text-slate-200">Nguyên liệu tồn kho thấp</p>
+              <div className="dashboard-kpi-card p-3" style={{ animationDelay: "0.3s" }}>
+                <p className="text-[11px] uppercase text-cyan-50">Nguyên liệu tồn kho thấp</p>
                 <p className="mt-1 text-xl font-bold">{lowStockMaterials.length}</p>
-                <p className="text-xs text-slate-200">Cần nhập bổ sung</p>
+                <p className="text-xs text-cyan-50/90">Cần nhập bổ sung</p>
               </div>
-              <div className="rounded-xl border border-white/20 bg-white/10 p-3 backdrop-blur-sm">
-                <p className="text-[11px] uppercase text-slate-200">Tổng tồn</p>
+              <div className="dashboard-kpi-card p-3" style={{ animationDelay: "0.15s" }}>
+                <p className="text-[11px] uppercase text-cyan-50">Tổng tồn</p>
                 <p className="mt-1 text-xl font-bold">{totalStockQuantity.toLocaleString("vi-VN")}</p>
-                <p className="text-xs text-slate-200">Đơn vị gộp</p>
+                <p className="text-xs text-cyan-50/90">Đơn vị gộp</p>
               </div>
-              <div className="rounded-xl border border-white/20 bg-white/10 p-3 backdrop-blur-sm">
-                <p className="text-[11px] uppercase text-slate-200">Diện tích kho</p>
+              <div className="dashboard-kpi-card p-3 dashboard-float" style={{ animationDelay: "0.4s" }}>
+                <p className="text-[11px] uppercase text-cyan-50">Diện tích kho</p>
                 <p className="mt-1 text-xl font-bold">{totalWarehouseArea.toLocaleString("vi-VN")}</p>
-                <p className="text-xs text-slate-200">m2</p>
+                <p className="text-xs text-cyan-50/90">m2</p>
               </div>
             </div>
           </div>
@@ -787,9 +773,10 @@ export default function Home() {
         />
       </div>
 
-      {/* Biểu đồ tổng quan */}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3 mb-6">
-        <div className="xl:col-span-2 rounded-xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.03] p-5">
+      {/* Biểu đồ tổng quan - Nhập & Xuất & Cơ Cấu */}
+      <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr_1fr]">
+        {/* Biểu đồ Nhập Kho */}
+        <div className="dashboard-panel p-5 xl:col-span-2 row-span-2">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-base font-semibold text-gray-900 dark:text-white">Biểu Đồ Nhập Kho 6 Tháng Gần Nhất</h3>
             <div className="inline-flex rounded-lg border border-gray-200 p-1 dark:border-gray-700">
@@ -844,9 +831,70 @@ export default function Home() {
           <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
             Tháng cao nhất: {peakImportMonth.label || "--"} ({peakImportMonth.count} phiếu)
           </p>
+
+          {/* Xuất Kho ngay dưới */}
+          {monthlyExportSeries.length > 0 && (
+            <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-base font-semibold text-gray-900 dark:text-white">Biểu Đồ Xuất Kho 6 Tháng Gần Nhất</h3>
+                <div className="inline-flex rounded-lg border border-gray-200 p-1 dark:border-gray-700">
+                  <button
+                    onClick={() => setExportChartMode("count")}
+                    className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                      exportChartMode === "count"
+                        ? "bg-blue-600 text-white"
+                        : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                    }`}
+                  >
+                    Số phiếu
+                  </button>
+                  <button
+                    onClick={() => setExportChartMode("amount")}
+                    className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                      exportChartMode === "amount"
+                        ? "bg-blue-600 text-white"
+                        : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                    }`}
+                  >
+                    Giá trị (triệu)
+                  </button>
+                </div>
+              </div>
+
+              <VerticalBarChart
+                data={exportChartData}
+                unitLabel={exportChartMode === "count" ? "Đơn vị: số phiếu" : "Đơn vị: triệu đồng"}
+                valueFormatter={(value) => (exportChartMode === "count" ? `${value}` : `${value}tr`)}
+              />
+
+              <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-white/[0.05] dark:bg-white/[0.03]">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Tổng phiếu xuất</p>
+                  <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{filteredExports.length}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-white/[0.05] dark:bg-white/[0.03]">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Giá trị trong kỳ</p>
+                  <p className="mt-1 text-lg font-semibold text-cyan-600 dark:text-cyan-400">{formatCurrency(totalExportAmountIn6Months)}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-white/[0.05] dark:bg-white/[0.03]">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Tháng cao nhất</p>
+                  <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{peakExportMonth.label || "--"}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-white/[0.05] dark:bg-white/[0.03]">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Số phiếu cao nhất</p>
+                  <p className="mt-1 text-lg font-semibold text-emerald-600 dark:text-emerald-400">{peakExportMonth.count}</p>
+                </div>
+              </div>
+
+              <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                Tháng cao nhất: {peakExportMonth.label || "--"} ({peakExportMonth.count} phiếu)
+              </p>
+            </div>
+          )}
         </div>
 
-        <div className="rounded-xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.03] p-5">
+        {/* Cơ Cấu Tồn Kho */}
+        <div className="dashboard-panel p-5">
           <h3 className="mb-4 text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             <svg className="w-5 h-5 text-cyan-600 dark:text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -910,39 +958,11 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Import Trend Chart */}
-      {monthlyImportSeries.length > 0 && (
-        <div className="mb-6 rounded-xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.03] p-5">
-          <h3 className="mb-4 text-base font-semibold text-gray-900 dark:text-white">Xu Hướng Giá Trị Nhập Kho</h3>
-          <LineChart data={monthlyImportSeries.map((month) => ({ label: month.label, value: month.amount / 1000000 }))} />
-          <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <div className="rounded-lg bg-gray-50 dark:bg-white/[0.03] p-3">
-              <p className="text-xs text-gray-500 dark:text-gray-400">Giá trị trung bình</p>
-              <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                {formatCurrency(totalImportAmountIn6Months / monthlyImportSeries.length)}
-              </p>
-            </div>
-            <div className="rounded-lg bg-gray-50 dark:bg-white/[0.03] p-3">
-              <p className="text-xs text-gray-500 dark:text-gray-400">Giá trị cao nhất</p>
-              <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                {formatCurrency(Math.max(...monthlyImportSeries.map((m) => m.amount)))}
-              </p>
-            </div>
-            <div className="rounded-lg bg-gray-50 dark:bg-white/[0.03] p-3">
-              <p className="text-xs text-gray-500 dark:text-gray-400">Giá trị thấp nhất</p>
-              <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                {formatCurrency(Math.min(...monthlyImportSeries.map((m) => m.amount)))}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 mb-6">
 
         {/* Nguyên liệu tồn kho thấp */}
-        <div className="lg:col-span-1 rounded-xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.03] overflow-hidden">
+        <div className="dashboard-panel lg:col-span-1 overflow-hidden">
           <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-900/10 dark:to-orange-900/10">
             <h3 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
               <svg className="w-5 h-5 text-red-600 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20">
@@ -994,7 +1014,7 @@ export default function Home() {
         </div>
 
         {/* Phiếu nhập gần đây - redesigned */}
-        <div className="lg:col-span-2 rounded-xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.03] overflow-hidden">
+        <div className="dashboard-panel lg:col-span-2 overflow-hidden">
           <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-orange-50 to-yellow-50 dark:from-orange-900/10 dark:to-yellow-900/10">
             <h3 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
               <svg className="w-5 h-5 text-orange-600 dark:text-orange-400" fill="currentColor" viewBox="0 0 20 20">
@@ -1056,7 +1076,7 @@ export default function Home() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 mb-6">
         
         {/* Nguyên liệu mới thêm - Card Style */}
-        <div className="lg:col-span-2 rounded-xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.03] overflow-hidden">
+        <div className="dashboard-panel lg:col-span-2 overflow-hidden">
           <div className="flex items-center justify-between p-5 lg:p-6 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/10 dark:to-cyan-900/10">
             <div>
               <h3 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
@@ -1122,7 +1142,7 @@ export default function Home() {
         {/* Danh sách nhà cung cấp + kho */}
         <div className="space-y-6">
           {/* Nhà cung cấp */}
-          <div className="rounded-xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.03] overflow-hidden">
+          <div className="dashboard-panel overflow-hidden">
             <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/10 dark:to-emerald-900/10">
               <h3 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                 <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
@@ -1169,7 +1189,7 @@ export default function Home() {
           </div>
 
           {/* Kho */}
-          <div className="rounded-xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.03] overflow-hidden">
+          <div className="dashboard-panel overflow-hidden">
             <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/10 dark:to-indigo-900/10">
               <h3 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                 <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="currentColor" viewBox="0 0 20 20">
@@ -1218,14 +1238,14 @@ export default function Home() {
       </div>
 
       {/* Quick Actions */}
-      <div className="mb-6 rounded-xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.03] p-5 lg:p-6">
+      <div className="dashboard-panel mb-6 p-5 lg:p-6">
         <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-5">
           Thao Tác Nhanh
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           <button
             onClick={() => navigate("/nhap-kho")}
-            className="flex flex-col items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-200 hover:shadow-md hover:scale-105"
+            className="group flex flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-300 hover:shadow-md dark:border-slate-700 dark:from-slate-900 dark:to-slate-900/70 dark:hover:border-cyan-700 sm:p-5"
           >
             <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
               <svg className="w-6 h-6 sm:w-7 sm:h-7 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1236,7 +1256,7 @@ export default function Home() {
           </button>
           <button
             onClick={() => navigate("/xuat-kho")}
-            className="flex flex-col items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 hover:bg-orange-50 dark:hover:bg-orange-900/20 hover:border-orange-300 dark:hover:border-orange-600 transition-all duration-200 hover:shadow-md hover:scale-105"
+            className="group flex flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md dark:border-slate-700 dark:from-slate-900 dark:to-slate-900/70 dark:hover:border-amber-700 sm:p-5"
           >
             <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
               <svg className="w-6 h-6 sm:w-7 sm:h-7 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1247,7 +1267,7 @@ export default function Home() {
           </button>
           <button
             onClick={() => navigate("/quan-ly-nguyen-lieu")}
-            className="flex flex-col items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 hover:bg-green-50 dark:hover:bg-green-900/20 hover:border-green-300 dark:hover:border-green-600 transition-all duration-200 hover:shadow-md hover:scale-105"
+            className="group flex flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md dark:border-slate-700 dark:from-slate-900 dark:to-slate-900/70 dark:hover:border-emerald-700 sm:p-5"
           >
             <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
               <svg className="w-6 h-6 sm:w-7 sm:h-7 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1258,7 +1278,7 @@ export default function Home() {
           </button>
           <button
             onClick={() => navigate("/don-dat-hang")}
-            className="flex flex-col items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-300 dark:hover:border-purple-600 transition-all duration-200 hover:shadow-md hover:scale-105"
+            className="group flex flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md dark:border-slate-700 dark:from-slate-900 dark:to-slate-900/70 dark:hover:border-indigo-700 sm:p-5"
           >
             <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
               <svg className="w-6 h-6 sm:w-7 sm:h-7 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1268,6 +1288,7 @@ export default function Home() {
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Đơn Đặt Hàng</span>
           </button>
         </div>
+      </div>
       </div>
     </>
   );

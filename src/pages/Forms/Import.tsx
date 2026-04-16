@@ -7,6 +7,7 @@ import { warehouseService } from "../../services/warehouseService";
 import { useState, useEffect, useRef } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
+import CustomSelect from "../../components/common/CustomSelect";
 import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
 
@@ -1255,16 +1256,15 @@ export default function NhapKho() {
                   )}
                 </div>
 
-                <select
+                <CustomSelect
                   value={sortBy}
-                  onChange={(e) =>
-                    setSortBy(e.target.value as "ngayTao" | "tongTien")
-                  }
-                  className="flex-1 sm:flex-initial px-3 py-2 pr-8 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="ngayTao">Sắp xếp theo ngày</option>
-                  <option value="tongTien">Sắp xếp theo giá trị</option>
-                </select>
+                  onChange={(value) => setSortBy(value as "ngayTao" | "tongTien")}
+                  options={[
+                    { value: "ngayTao", label: "Sắp xếp theo ngày" },
+                    { value: "tongTien", label: "Sắp xếp theo giá trị" },
+                  ]}
+                  buttonClassName="flex-1 sm:flex-initial sm:min-w-[180px]"
+                />
                 <button
                   onClick={() =>
                     setSortOrder(sortOrder === "asc" ? "desc" : "asc")

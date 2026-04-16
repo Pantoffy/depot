@@ -1,5 +1,8 @@
 import { createContext, useContext, useState, useEffect } from "react";
 
+const SIDEBAR_EXPANDED_KEY = "wm.sidebar.expanded";
+const SIDEBAR_MOBILE_OPEN_KEY = "wm.sidebar.mobileOpen";
+
 type SidebarContextType = {
   isExpanded: boolean;
   isMobileOpen: boolean;
@@ -26,8 +29,14 @@ export const useSidebar = () => {
 export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem(SIDEBAR_EXPANDED_KEY) !== "false";
+  });
+  const [isMobileOpen, setIsMobileOpen] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(SIDEBAR_MOBILE_OPEN_KEY) === "true";
+  });
   const [isMobile, setIsMobile] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [activeItem, setActiveItem] = useState<string | null>(null);
@@ -49,6 +58,14 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
       window.removeEventListener("resize", handleResize);
     };
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_EXPANDED_KEY, String(isExpanded));
+  }, [isExpanded]);
+
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_MOBILE_OPEN_KEY, String(isMobileOpen));
+  }, [isMobileOpen]);
 
   const toggleSidebar = () => {
     setIsExpanded((prev) => !prev);

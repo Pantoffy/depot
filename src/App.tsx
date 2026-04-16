@@ -16,6 +16,7 @@ import StockCheck from "./pages/Forms/StockCheck";
 import Materials from "./pages/Inventory/Materials";
 import Suppliers from "./pages/Inventory/Suppliers";
 import Warehouse from "./pages/Inventory/Warehouse";
+import StockByWarehouse from "./pages/Inventory/StockByWarehouse";
 
 export default function App() {
   return (
@@ -38,12 +39,15 @@ export default function App() {
             <Route path="/nhap-kho" element={<Import />} />
             <Route path="/xuat-kho" element={<Export />} />
             <Route path="/kiem-ke" element={<StockCheck />} />
+            <Route path="/kiem-ke/tao-moi" element={<StockCheck />} />
+            <Route path="/kiem-ke/chi-tiet/:receiptId" element={<StockCheck />} />
             <Route path="/don-dat-hang" element={<PurchaseOrder />} />
 
             {/* Inventory Management */}
             <Route path="/quan-ly-nguyen-lieu" element={<Materials />} />
             <Route path="/quan-ly-nha-cung-cap" element={<Suppliers />} />
             <Route path="/quan-ly-kho" element={<Warehouse />} />
+            <Route path="/ton-kho-theo-kho" element={<StockByWarehouse />} />
           </Route>
 
           {/* Auth Layout */}
