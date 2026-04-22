@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import CustomSelect from "../../components/common/CustomSelect";
+import Pagination from "../../components/common/Pagination";
 import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
 import { exportService } from "../../services/exportService";
@@ -38,6 +39,15 @@ interface Receipt {
   trangThai: string;
   materials: MaterialLine[];
 }
+
+const RECEIPT_STATUS = {
+  DRAFT: "Đang soạn thảo",
+  PENDING: "Chờ xác nhận",
+  APPROVED: "Đã xác nhận",
+  CANCELLED: "Đã hủy",
+} as const;
+
+type ReceiptStatusLabel = (typeof RECEIPT_STATUS)[keyof typeof RECEIPT_STATUS];
 
 export default function XuatKho() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
@@ -220,7 +230,7 @@ export default function XuatKho() {
       soChungTu: item.documentNo || item.soChungTu || "",
       lyDo: item.reason || item.lyDo || "",
       trangThai: normalizeReceiptStatus(
-        item.status || item.trangThai || "Pending",
+        item.status || item.trangThai || RECEIPT_STATUS.PENDING,
       ),
       materials: mappedMaterials,
     };
@@ -253,7 +263,7 @@ export default function XuatKho() {
     }
   };
 
-  const normalizeReceiptStatus = (status: string) => {
+  const normalizeReceiptStatus = (status: string): ReceiptStatusLabel => {
     const normalized = (status || "").trim().toLowerCase();
     if (
       normalized === "approved" ||
@@ -261,14 +271,16 @@ export default function XuatKho() {
       normalized === "đã xác nhận" ||
       normalized === "da xac nhan"
     ) {
-      return "Approved";
+      return RECEIPT_STATUS.APPROVED;
     }
     if (
       normalized === "draft" ||
       normalized === "nháp" ||
-      normalized === "nhap"
+      normalized === "nhap" ||
+      normalized === "đang soạn thảo" ||
+      normalized === "dang soan thao"
     ) {
-      return "Draft";
+      return RECEIPT_STATUS.DRAFT;
     }
     if (
       normalized === "cancelled" ||
@@ -276,9 +288,9 @@ export default function XuatKho() {
       normalized === "đã hủy" ||
       normalized === "da huy"
     ) {
-      return "Cancelled";
+      return RECEIPT_STATUS.CANCELLED;
     }
-    return "Pending";
+    return RECEIPT_STATUS.PENDING;
   };
 
   const extractApiErrorMessage = (error: unknown) => {
@@ -310,29 +322,26 @@ export default function XuatKho() {
   };
 
   const isReceiptConfirmed = (status: string) => {
-    return normalizeReceiptStatus(status) === "Approved";
+    return normalizeReceiptStatus(status) === RECEIPT_STATUS.APPROVED;
   };
 
   const isReceiptCancelled = (status: string) => {
-    return normalizeReceiptStatus(status) === "Cancelled";
+    return normalizeReceiptStatus(status) === RECEIPT_STATUS.CANCELLED;
   };
 
   const isReceiptDraft = (status: string) => {
-    return normalizeReceiptStatus(status) === "Draft";
+    return normalizeReceiptStatus(status) === RECEIPT_STATUS.DRAFT;
   };
 
   const getReceiptStatusLabel = (status: string) => {
-    if (isReceiptConfirmed(status)) return "Đã xác nhận";
-    if (isReceiptDraft(status)) return "Đang soạn thảo";
-    if (isReceiptCancelled(status)) return "Đã hủy";
-    return "Chờ xác nhận";
+    return normalizeReceiptStatus(status);
   };
 
   const getReceiptStatusClass = (status: string) => {
     const normalized = normalizeReceiptStatus(status);
-    if (normalized === "Approved") return "status-confirmed";
-    if (normalized === "Draft") return "status-draft";
-    if (normalized === "Cancelled") return "status-cancelled";
+    if (normalized === RECEIPT_STATUS.APPROVED) return "status-confirmed";
+    if (normalized === RECEIPT_STATUS.DRAFT) return "status-draft";
+    if (normalized === RECEIPT_STATUS.CANCELLED) return "status-cancelled";
     return "status-pending";
   };
 
@@ -528,7 +537,10 @@ export default function XuatKho() {
     },
   );
 
-  const buildExportReceiptPayload = (receipt: Receipt, status: string) => {
+  const buildExportReceiptPayload = (
+    receipt: Receipt,
+    status: ReceiptStatusLabel,
+  ) => {
     const totalAmount = receipt.materials.reduce(
       (sum, m) => sum + m.soLuong * m.donGia,
       0,
@@ -612,100 +624,6 @@ export default function XuatKho() {
     }
   };
 
-  const syncMaterialStockForReceipt = async (receipt: Receipt) => {
-    const quantitiesByMaterial = receipt.materials.reduce(
-      (acc, item) => {
-        if (!item.materialId) return acc;
-        acc[item.materialId] =
-          (acc[item.materialId] || 0) + Number(item.soLuong || 0);
-        return acc;
-      },
-      {} as Record<number, number>,
-    );
-
-    const updateJobs = Object.entries(quantitiesByMaterial).map(
-      async ([materialIdText, quantity]) => {
-        const materialId = Number(materialIdText);
-        let material = availableMaterials.find(
-          (m: any) => Number(m.id) === materialId,
-        );
-
-        if (!material) {
-          material = await materialService.getMaterialById(materialId);
-        }
-
-        if (!material) {
-          throw new Error(`Không tìm thấy nguyên liệu ID ${materialId}`);
-        }
-
-        const nextStock = Math.max(
-          0,
-          Number(material.stockQuantity || 0) - Number(quantity || 0),
-        );
-
-        await materialService.updateMaterial(materialId, {
-          code: material.code || "",
-          name: material.name || "",
-          categoryId: material.categoryId || 1,
-          categoryName: material.categoryName || "",
-          unitId: material.unitId || 1,
-          unitName: material.unitName || "",
-          supplierId: material.supplierId || 1,
-          stockQuantity: nextStock,
-          note: material.note || "",
-          status: material.status || "Đang kinh doanh",
-        } as any);
-      },
-    );
-
-    await Promise.all(updateJobs);
-  };
-
-  const syncMaterialStockForCancellation = async (receipt: Receipt) => {
-    const quantitiesByMaterial = receipt.materials.reduce(
-      (acc, item) => {
-        if (!item.materialId) return acc;
-        acc[item.materialId] =
-          (acc[item.materialId] || 0) + Number(item.soLuong || 0);
-        return acc;
-      },
-      {} as Record<number, number>,
-    );
-
-    const updateJobs = Object.entries(quantitiesByMaterial).map(
-      async ([materialIdText, quantity]) => {
-        const materialId = Number(materialIdText);
-        let material = availableMaterials.find(
-          (m: any) => Number(m.id) === materialId,
-        );
-
-        if (!material) {
-          material = await materialService.getMaterialById(materialId);
-        }
-
-        if (!material) {
-          throw new Error(`Không tìm thấy nguyên liệu ID ${materialId}`);
-        }
-
-        await materialService.updateMaterial(materialId, {
-          code: material.code || "",
-          name: material.name || "",
-          categoryId: material.categoryId || 1,
-          categoryName: material.categoryName || "",
-          unitId: material.unitId || 1,
-          unitName: material.unitName || "",
-          supplierId: material.supplierId || 1,
-          stockQuantity:
-            Number(material.stockQuantity || 0) + Number(quantity || 0),
-          note: material.note || "",
-          status: material.status || "Đang kinh doanh",
-        } as any);
-      },
-    );
-
-    await Promise.all(updateJobs);
-  };
-
   const handleEditReceipt = async (receipt: Receipt) => {
     if (isReceiptCancelled(receipt.trangThai)) {
       showToast("Phiếu đã hủy không thể chỉnh sửa", "warning");
@@ -761,7 +679,7 @@ export default function XuatKho() {
   };
 
   const handleSaveReceipt = async (
-    targetStatus: "Draft" | "Pending" = "Pending",
+    targetStatus: ReceiptStatusLabel = RECEIPT_STATUS.PENDING,
   ) => {
     if (
       !formData.soPhieu ||
@@ -795,6 +713,10 @@ export default function XuatKho() {
       }
     }
 
+    const currentReceiptStatus = normalizeReceiptStatus(
+      selectedReceipt?.trangThai || RECEIPT_STATUS.PENDING,
+    );
+
     const workingReceipt: Receipt = {
       id: selectedReceipt?.id || "",
       soPhieu: formData.soPhieu,
@@ -808,10 +730,9 @@ export default function XuatKho() {
       trangThai:
         view === "create"
           ? targetStatus
-          : ["Approved", "Cancelled"].includes(
-                normalizeReceiptStatus(selectedReceipt?.trangThai || "Pending"),
-              )
-            ? normalizeReceiptStatus(selectedReceipt?.trangThai || "Pending")
+          : currentReceiptStatus === RECEIPT_STATUS.APPROVED ||
+              currentReceiptStatus === RECEIPT_STATUS.CANCELLED
+            ? currentReceiptStatus
             : targetStatus,
       materials,
     };
@@ -821,12 +742,12 @@ export default function XuatKho() {
       await validateStockForReceipt(workingReceipt);
       const payload = buildExportReceiptPayload(
         workingReceipt,
-        workingReceipt.trangThai,
+        normalizeReceiptStatus(workingReceipt.trangThai),
       );
 
       if (view === "create") {
         await exportService.createExportReceipt(payload as any);
-        if (targetStatus === "Draft") {
+        if (targetStatus === RECEIPT_STATUS.DRAFT) {
           showToast("Đã lưu phiếu xuất ở trạng thái đang soạn thảo", "success");
         } else {
           showToast(
@@ -841,10 +762,10 @@ export default function XuatKho() {
         );
         if (
           isReceiptDraft(selectedReceipt.trangThai) &&
-          targetStatus === "Pending"
+          targetStatus === RECEIPT_STATUS.PENDING
         ) {
           showToast("Đã gửi phiếu xuất chờ xác nhận", "success");
-        } else if (targetStatus === "Draft") {
+        } else if (targetStatus === RECEIPT_STATUS.DRAFT) {
           showToast("Đã lưu phiếu xuất ở trạng thái đang soạn thảo", "success");
         } else {
           showToast("Cập nhật phiếu xuất kho thành công", "success");
@@ -907,18 +828,20 @@ export default function XuatKho() {
           const detailedReceipt = await fetchExportReceiptDetail(receipt.id);
           const payload = buildExportReceiptPayload(
             detailedReceipt,
-            "Approved",
+            RECEIPT_STATUS.APPROVED,
           );
           await exportService.updateExportReceipt(
             Number(receipt.id),
             payload as any,
           );
-          await syncMaterialStockForReceipt(detailedReceipt);
           const refreshedMaterials = await fetchMaterials();
           await fetchExportReceipts(refreshedMaterials);
 
           if (selectedReceipt?.id === receipt.id) {
-            setSelectedReceipt({ ...detailedReceipt, trangThai: "Approved" });
+            setSelectedReceipt({
+              ...detailedReceipt,
+              trangThai: RECEIPT_STATUS.APPROVED,
+            });
           }
 
           showToast(
@@ -947,7 +870,10 @@ export default function XuatKho() {
         try {
           setLoading(true);
           const detailedReceipt = await fetchExportReceiptDetail(receipt.id);
-          const payload = buildExportReceiptPayload(detailedReceipt, "Pending");
+          const payload = buildExportReceiptPayload(
+            detailedReceipt,
+            RECEIPT_STATUS.PENDING,
+          );
           await exportService.updateExportReceipt(
             Number(receipt.id),
             payload as any,
@@ -957,7 +883,10 @@ export default function XuatKho() {
           await fetchExportReceipts(refreshedMaterials);
 
           if (selectedReceipt?.id === receipt.id) {
-            setSelectedReceipt({ ...detailedReceipt, trangThai: "Pending" });
+            setSelectedReceipt({
+              ...detailedReceipt,
+              trangThai: RECEIPT_STATUS.PENDING,
+            });
           }
 
           showToast("Đã gửi phiếu xuất chờ xác nhận", "success");
@@ -988,7 +917,7 @@ export default function XuatKho() {
           const detailedReceipt = await fetchExportReceiptDetail(receipt.id);
           const payload = buildExportReceiptPayload(
             detailedReceipt,
-            "Cancelled",
+            RECEIPT_STATUS.CANCELLED,
           );
           await exportService.updateExportReceipt(
             Number(receipt.id),
@@ -996,14 +925,17 @@ export default function XuatKho() {
           );
 
           if (isReceiptConfirmed(detailedReceipt.trangThai)) {
-            await syncMaterialStockForCancellation(detailedReceipt);
+            // Backend handles inventory rollback; refresh happens below.
           }
 
           const refreshedMaterials = await fetchMaterials();
           await fetchExportReceipts(refreshedMaterials);
 
           if (selectedReceipt?.id === receipt.id) {
-            setSelectedReceipt({ ...detailedReceipt, trangThai: "Cancelled" });
+            setSelectedReceipt({
+              ...detailedReceipt,
+              trangThai: RECEIPT_STATUS.CANCELLED,
+            });
           }
 
           showToast("Hủy phiếu xuất thành công", "success");
@@ -1056,10 +988,10 @@ export default function XuatKho() {
     new Set(receipts.map((r) => r.kho).filter(Boolean)),
   );
   const statusFilterOptions = [
-    "Đang soạn thảo",
-    "Chờ xác nhận",
-    "Đã xác nhận",
-    "Đã hủy",
+    RECEIPT_STATUS.DRAFT,
+    RECEIPT_STATUS.PENDING,
+    RECEIPT_STATUS.APPROVED,
+    RECEIPT_STATUS.CANCELLED,
   ];
 
   const filteredReceipts = receipts
@@ -1090,10 +1022,10 @@ export default function XuatKho() {
   const summaryStats = {
     totalReceipts: receipts.length,
     draftReceipts: receipts.filter(
-      (r) => normalizeReceiptStatus(r.trangThai) === "Draft",
+      (r) => normalizeReceiptStatus(r.trangThai) === RECEIPT_STATUS.DRAFT,
     ).length,
     pendingReceipts: receipts.filter(
-      (r) => normalizeReceiptStatus(r.trangThai) === "Pending",
+      (r) => normalizeReceiptStatus(r.trangThai) === RECEIPT_STATUS.PENDING,
     ).length,
     totalValue: receipts.reduce((sum, r) => sum + (r.tongTien || 0), 0),
   };
@@ -1410,7 +1342,7 @@ export default function XuatKho() {
                         {new Date(receipt.ngayTao).toLocaleDateString("vi-VN")}
                       </td>
                       <td className="px-6 py-4 text-gray-600 dark:text-gray-400">
-                        {receipt.receiverName}
+                        {receipt.receiverName || "-"}
                       </td>
                       <td className="px-6 py-4 text-gray-600 dark:text-gray-400">
                         {receipt.kho || `Kho ${receipt.warehouseId || ""}`}
@@ -1426,7 +1358,7 @@ export default function XuatKho() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-center">
-                        <div className="flex items-center justify-center gap-3">
+                        <div className="flex justify-center gap-2">
                           <button
                             onClick={() => handleViewReceipt(receipt)}
                             className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
@@ -1499,89 +1431,15 @@ export default function XuatKho() {
             </table>
           </div>
 
-          <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Hiển thị {(currentPage - 1) * itemsPerPage + 1} đến{" "}
-              {Math.min(currentPage * itemsPerPage, filteredReceipts.length)}{" "}
-              trong {filteredReceipts.length} phiếu
-            </p>
-            <div className="flex gap-2 items-center">
-              <button
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-                className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                ‹
-              </button>
-
-              {(() => {
-                const pages = [];
-                const maxVisible = 5;
-                let startPage = Math.max(
-                  1,
-                  currentPage - Math.floor(maxVisible / 2),
-                );
-                let endPage = Math.min(totalPages, startPage + maxVisible - 1);
-
-                if (endPage - startPage + 1 < maxVisible) {
-                  startPage = Math.max(1, endPage - maxVisible + 1);
-                }
-
-                pages.push(1);
-                if (startPage > 2) {
-                  pages.push("...");
-                }
-                for (
-                  let i = Math.max(2, startPage);
-                  i <= Math.min(totalPages - 1, endPage);
-                  i++
-                ) {
-                  if (!pages.includes(i)) {
-                    pages.push(i);
-                  }
-                }
-                if (endPage < totalPages - 1) {
-                  pages.push("...");
-                }
-                if (totalPages > 1 && !pages.includes(totalPages)) {
-                  pages.push(totalPages);
-                }
-
-                return pages.map((page, idx) =>
-                  page === "..." ? (
-                    <span
-                      key={`ellipsis-${idx}`}
-                      className="text-gray-500 dark:text-gray-400"
-                    >
-                      ...
-                    </span>
-                  ) : (
-                    <button
-                      key={page}
-                      onClick={() => setCurrentPage(page as number)}
-                      className={`px-4 py-2 text-sm rounded-lg transition-colors ${
-                        page === currentPage
-                          ? "bg-blue-600 text-white"
-                          : "border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  ),
-                );
-              })()}
-
-              <button
-                onClick={() =>
-                  setCurrentPage(Math.min(totalPages, currentPage + 1))
-                }
-                disabled={currentPage === totalPages}
-                className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                ›
-              </button>
-            </div>
-          </div>
+          <Pagination
+            currentPage={currentPage}
+            totalPages={Math.max(totalPages, 1)}
+            totalItems={filteredReceipts.length}
+            startItem={filteredReceipts.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}
+            endItem={currentPage * itemsPerPage}
+            onPageChange={setCurrentPage}
+            labelPrefix="Hien thi"
+          />
         </div>
       </>
     );
@@ -2080,7 +1938,7 @@ export default function XuatKho() {
 
           <div className="flex gap-3">
             <button
-              onClick={() => void handleSaveReceipt("Draft")}
+              onClick={() => void handleSaveReceipt(RECEIPT_STATUS.DRAFT)}
               className="module-primary-btn inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white transition-colors"
             >
               <svg
@@ -2340,10 +2198,13 @@ export default function XuatKho() {
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
               Danh Sách Hàng Hóa
             </h3>
-            <div className="overflow-x-auto custom-scrollbar">
+            <div className="overflow-x-auto custom-scrollbar rounded-xl border border-gray-200 dark:border-gray-700">
               <table className="module-table w-full text-sm">
-                <thead className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                <thead className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/50">
                   <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
+                      STT
+                    </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
                       Mã
                     </th>
@@ -2354,42 +2215,56 @@ export default function XuatKho() {
                       Đơn vị
                     </th>
                     <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
-                      SL
+                      Số lượng
                     </th>
                     <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
-                      Đơn Giá
+                      Đơn giá
                     </th>
                     <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
-                      Thành Tiền
+                      Thành tiền
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {selectedReceipt.materials.map((m) => (
-                    <tr
-                      key={m.id}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-800/50"
-                    >
-                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
-                        {m.maHang}
-                      </td>
-                      <td className="px-4 py-3 text-gray-900 dark:text-white">
-                        {m.tenHang}
-                      </td>
-                      <td className="px-4 py-3 text-center text-gray-600 dark:text-gray-400">
-                        {m.donVi}
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">
-                        {m.soLuong}
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">
-                        {m.donGia.toLocaleString("vi-VN")}₫
-                      </td>
-                      <td className="px-4 py-3 text-right font-medium text-gray-900 dark:text-white">
-                        {(m.soLuong * m.donGia).toLocaleString("vi-VN")}₫
+                  {selectedReceipt.materials.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400"
+                      >
+                        Phiếu xuất chưa có hàng hóa.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    selectedReceipt.materials.map((m, idx) => (
+                      <tr
+                        key={m.id}
+                        className="transition-colors odd:bg-white even:bg-gray-50/60 hover:bg-sky-50/70 dark:odd:bg-transparent dark:even:bg-gray-800/30 dark:hover:bg-sky-900/20"
+                      >
+                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
+                          {idx + 1}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
+                          {m.maHang}
+                        </td>
+                        <td className="px-4 py-3 text-gray-900 dark:text-white">
+                          {m.tenHang}
+                        </td>
+                        <td className="px-4 py-3 text-center text-gray-600 dark:text-gray-400">
+                          {m.donVi}
+                        </td>
+                        <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">
+                          {Number(m.soLuong || 0).toLocaleString("vi-VN")}
+                        </td>
+                        <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">
+                          {Number(m.donGia || 0).toLocaleString("vi-VN")}₫
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">
+                          {(Number(m.soLuong || 0) * Number(m.donGia || 0)).toLocaleString("vi-VN")}₫
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

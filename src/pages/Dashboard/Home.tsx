@@ -8,6 +8,7 @@ import { warehouseService, Warehouse } from "../../services/warehouseService";
 import { importService, ImportReceipt } from "../../services/importService";
 import { exportService, ExportReceipt } from "../../services/exportService";
 import { unitService, Unit, DEFAULT_UNITS } from "../../services/unitService";
+import { buildInventoryQuantityMap, inventoryService, InventoryItem } from "../../services/inventoryService";
 
 // ========== COMPONENTS ==========
 
@@ -340,6 +341,11 @@ export default function Home() {
   const [imports, setImports] = useState<ImportReceipt[]>([]);
   const [exports, setExports] = useState<ExportReceipt[]>([]);
   const [units, setUnits] = useState<Unit[]>(DEFAULT_UNITS);
+  const [inventories, setInventories] = useState<InventoryItem[]>([]);
+  const inventoryQuantityByMaterial = useMemo(
+    () => buildInventoryQuantityMap(inventories),
+    [inventories],
+  );
 
   useEffect(() => {
     fetchAll();
@@ -348,12 +354,13 @@ export default function Home() {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [mats, sups, whs, imps, exps] = await Promise.allSettled([
+      const [mats, sups, whs, imps, exps, invs] = await Promise.allSettled([
         materialService.getAllMaterials(),
         supplierService.getAllSuppliers(),
         warehouseService.getAllWarehouses(),
         importService.getAllImportReceipts(),
         exportService.getAllExportReceipts(),
+        inventoryService.getAllInventories(),
       ]);
 
       if (mats.status === "fulfilled") setMaterials(mats.value);
@@ -361,6 +368,7 @@ export default function Home() {
       if (whs.status === "fulfilled") setWarehouses(whs.value);
       if (imps.status === "fulfilled") setImports(imps.value);
       if (exps.status === "fulfilled") setExports(exps.value);
+      if (invs.status === "fulfilled") setInventories(invs.value);
 
       // Load units
       try {
@@ -385,6 +393,11 @@ export default function Home() {
   const startDateObj = new Date(startDate);
   const endDateObj = new Date(endDate);
 
+  const getMaterialStockQuantity = (materialId?: number) => {
+    if (!materialId) return 0;
+    return inventoryQuantityByMaterial[materialId] || 0;
+  };
+
   // Filter imports by date range
   const filteredImports = useMemo(
     () =>
@@ -406,6 +419,10 @@ export default function Home() {
 
   const activeMaterials = materials.filter((m) => m.status === "Đang kinh doanh");
   const lowStockMaterials = materials
+    .map((material) => ({
+      ...material,
+      stockQuantity: getMaterialStockQuantity(material.id),
+    }))
     .filter((m) => m.stockQuantity <= 10 && m.status === "Đang kinh doanh")
     .sort((a, b) => a.stockQuantity - b.stockQuantity);
 
@@ -425,16 +442,16 @@ export default function Home() {
   const approvedImports = filteredImports.length - pendingImports;
 
   const outOfStockMaterials = materials.filter(
-    (m) => m.stockQuantity <= 0 && m.status === "Đang kinh doanh"
+    (material) => getMaterialStockQuantity(material.id) <= 0 && material.status === "Đang kinh doanh"
   );
   const inventoryHealthRate =
     activeMaterials.length === 0
       ? 0
       : Math.round(
-          (activeMaterials.filter((m) => m.stockQuantity > 10).length / activeMaterials.length) * 100
+          (activeMaterials.filter((material) => getMaterialStockQuantity(material.id) > 10).length / activeMaterials.length) * 100
         );
 
-  const totalStockQuantity = materials.reduce((sum, m) => sum + Number(m.stockQuantity || 0), 0);
+  const totalStockQuantity = Object.values(inventoryQuantityByMaterial).reduce((sum, quantity) => sum + Number(quantity || 0), 0);
   const totalWarehouseArea = warehouses.reduce((sum, w) => sum + Number(w.area || 0), 0);
 
   const recentImports = [...filteredImports]
@@ -552,8 +569,11 @@ export default function Home() {
     monthlyExportSeries[0] || { key: "", label: "", count: 0, amount: 0 }
   );
 
-  const healthyStockCount = activeMaterials.filter((m) => m.stockQuantity > 10).length;
-  const warningStockCount = activeMaterials.filter((m) => m.stockQuantity > 0 && m.stockQuantity <= 10).length;
+  const healthyStockCount = activeMaterials.filter((material) => getMaterialStockQuantity(material.id) > 10).length;
+  const warningStockCount = activeMaterials.filter((material) => {
+    const quantity = getMaterialStockQuantity(material.id);
+    return quantity > 0 && quantity <= 10;
+  }).length;
   const stockSegments = [
     {
       label: "Ổn định",
@@ -997,14 +1017,14 @@ export default function Home() {
                     </div>
                     <span
                       className={`flex-shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
-                        m.stockQuantity <= 0
+                        getMaterialStockQuantity(m.id) <= 0
                           ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-                          : m.stockQuantity <= 5
-                          ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
-                          : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300"
+                          : getMaterialStockQuantity(m.id) <= 5
+                            ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
+                            : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300"
                       }`}
                     >
-                      {m.stockQuantity} {getUnitName(m)}
+                      {getMaterialStockQuantity(m.id)} {getUnitName(m)}
                     </span>
                   </div>
                 ))}
@@ -1126,7 +1146,7 @@ export default function Home() {
                           <path d="M3 1a1 1 0 000 2h1.22l.305 1.222a.997.997 0 00.01.042L5.960 9H9a1 1 0 000-2H6.592l-.94-4.472A1 1 0 004.11 2H3z" />
                           <path fillRule="evenodd" d="M16 16V4h-1.05a2.5 2.5 0 00-4.9 0H10V2a2 2 0 10-4 0v1H4a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2zm-5.5-2.5a.5.5 0 11-1 0 .5.5 0 011 0zm4.5-.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" clipRule="evenodd" />
                         </svg>
-                        {m.stockQuantity} {getUnitName(m)}
+                        {getMaterialStockQuantity(m.id)} {getUnitName(m)}
                       </span>
                       <span className="text-xs text-gray-500 dark:text-gray-400">
                         {formatDate(m.createdTime)}

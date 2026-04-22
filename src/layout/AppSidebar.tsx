@@ -41,7 +41,7 @@ const navItems: NavItem[] = [
       { name: "Danh mục nguyên liệu", path: "/quan-ly-nguyen-lieu", pro: false },
       { name: "Nhà cung cấp", path: "/quan-ly-nha-cung-cap", pro: false },
       { name: "Quản lý kho", path: "/quan-ly-kho", pro: false },
-      { name: "Tồn kho theo kho", path: "/ton-kho-theo-kho", pro: false },
+      { name: "Quản lý tồn kho", path: "/ton-kho-theo-kho", pro: false },
     ],
   },
   {

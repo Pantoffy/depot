@@ -5,6 +5,7 @@ import Flatpickr from "react-flatpickr";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import CustomSelect from "../../components/common/CustomSelect";
+import Pagination from "../../components/common/Pagination";
 import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
 import { materialService, type Material } from "../../services/materialService";
@@ -51,6 +52,11 @@ const STATUS_DRAFT = "Đang soạn thảo";
 const STATUS_PENDING = "Chờ xác nhận";
 const STATUS_CONFIRMED = "Đã xác nhận";
 const STATUS_DELIVERED = "Đã giao hàng";
+type PurchaseOrderStatusLabel =
+  | typeof STATUS_DRAFT
+  | typeof STATUS_PENDING
+  | typeof STATUS_CONFIRMED
+  | typeof STATUS_DELIVERED;
 const STATUS_OPTIONS = [
   STATUS_DRAFT,
   STATUS_PENDING,
@@ -80,14 +86,50 @@ const getMaterialUnitName = (material?: Material | null): string => {
   return material.unitName || unitNameFromObject || "";
 };
 
+const normalizeOrderStatus = (status: string): PurchaseOrderStatusLabel => {
+  const normalized = (status || "").trim().toLowerCase();
+  if (
+    normalized === "đang soạn thảo" ||
+    normalized === "draft" ||
+    normalized === "nháp"
+  ) {
+    return STATUS_DRAFT;
+  }
+  if (
+    normalized === "chờ xác nhận" ||
+    normalized === "pending" ||
+    normalized === "waiting" ||
+    normalized === "chot xac nhan"
+  ) {
+    return STATUS_PENDING;
+  }
+  if (
+    normalized === "đã xác nhận" ||
+    normalized === "approved" ||
+    normalized === "confirmed" ||
+    normalized === "da xac nhan"
+  ) {
+    return STATUS_CONFIRMED;
+  }
+  if (
+    normalized === "đã giao hàng" ||
+    normalized === "delivered" ||
+    normalized === "da giao hang"
+  ) {
+    return STATUS_DELIVERED;
+  }
+  return STATUS_DRAFT;
+};
+
 const getStatusClass = (status: string): string => {
-  if (status === STATUS_DRAFT) {
+  const normalized = normalizeOrderStatus(status);
+  if (normalized === STATUS_DRAFT) {
     return "status-draft";
   }
-  if (status === STATUS_DELIVERED) {
+  if (normalized === STATUS_DELIVERED) {
     return "status-delivered";
   }
-  if (status === STATUS_CONFIRMED) {
+  if (normalized === STATUS_CONFIRMED) {
     return "status-confirmed";
   }
   return "status-pending";
@@ -142,7 +184,7 @@ const buildUiOrder = (
     supplierPhone: order.supplier?.phone || supplierFromList?.phone,
     supplierEmail: order.supplier?.email || supplierFromList?.email,
     supplierAddress: order.supplier?.address || supplierFromList?.address,
-    status: order.status,
+    status: normalizeOrderStatus(order.status),
     note: order.note || "",
     totalAmount: Number(order.totalAmount ?? calculatedTotal),
     details,
@@ -280,7 +322,7 @@ export default function PurchaseOrderPage() {
       orderDate: order.orderDate,
       supplierId: String(order.supplierId),
       expectedDeliveryDate: order.expectedDeliveryDate,
-      status: order.status,
+      status: normalizeOrderStatus(order.status),
       note: order.note,
     });
     setLineItems(order.details);
@@ -384,7 +426,7 @@ export default function PurchaseOrderPage() {
       status:
         view === "create"
           ? STATUS_DRAFT
-          : selectedOrder?.status || formData.status,
+          : normalizeOrderStatus(selectedOrder?.status || formData.status),
       note: formData.note,
       totalAmount: lineItems.reduce((sum, i) => sum + i.soLuong * i.donGia, 0),
       purchaseOrderDetails: lineItems.map((item) => ({
@@ -421,7 +463,7 @@ export default function PurchaseOrderPage() {
   };
 
   const handleSubmitApprovalRequest = async (order: UiOrder): Promise<void> => {
-    if (order.status !== STATUS_DRAFT) {
+    if (normalizeOrderStatus(order.status) !== STATUS_DRAFT) {
       showToast("Chỉ phiếu đang soạn thảo mới có thể gửi xác nhận", "warning");
       return;
     }
@@ -1130,7 +1172,7 @@ export default function PurchaseOrderPage() {
                 {selectedOrder.status}
               </span>
               <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/70 bg-white/70 p-2 backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/70">
-                {selectedOrder.status === STATUS_DRAFT && (
+                {normalizeOrderStatus(selectedOrder.status) === STATUS_DRAFT && (
                   <button
                     type="button"
                     onClick={() => void handleSubmitApprovalRequest(selectedOrder)}
@@ -1810,80 +1852,15 @@ export default function PurchaseOrderPage() {
           </table>
         </div>
 
-        <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Hiển thị {(currentPage - 1) * itemsPerPage + 1} đến{" "}
-            {Math.min(currentPage * itemsPerPage, filteredOrders.length)} trong{" "}
-            {filteredOrders.length} đơn
-          </p>
-          <div className="flex gap-2 items-center">
-            <button
-              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-              disabled={currentPage === 1}
-              className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              ‹
-            </button>
-            {(() => {
-              const pages = [];
-              const maxVisible = 5;
-              let startPage = Math.max(
-                1,
-                currentPage - Math.floor(maxVisible / 2),
-              );
-              let endPage = Math.min(totalPages, startPage + maxVisible - 1);
-              if (endPage - startPage + 1 < maxVisible) {
-                startPage = Math.max(1, endPage - maxVisible + 1);
-              }
-              pages.push(1);
-              if (startPage > 2) {
-                pages.push("...");
-              }
-              for (
-                let i = Math.max(2, startPage);
-                i <= Math.min(totalPages - 1, endPage);
-                i++
-              ) {
-                if (!pages.includes(i)) {
-                  pages.push(i);
-                }
-              }
-              if (endPage < totalPages - 1) {
-                pages.push("...");
-              }
-              if (totalPages > 1 && !pages.includes(totalPages)) {
-                pages.push(totalPages);
-              }
-              return pages.map((page, idx) =>
-                page === "..." ? (
-                  <span
-                    key={`ellipsis-${idx}`}
-                    className="text-gray-500 dark:text-gray-400"
-                  >
-                    ...
-                  </span>
-                ) : (
-                  <button
-                    key={page}
-                    onClick={() => setCurrentPage(page as number)}
-                    className={`px-4 py-2 text-sm rounded-lg transition-colors ${page === currentPage ? "bg-blue-600 text-white" : "border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
-                  >
-                    {page}
-                  </button>
-                ),
-              );
-            })()}
-            <button
-              onClick={() =>
-                setCurrentPage(Math.min(totalPages, currentPage + 1))
-              }
-              disabled={currentPage === totalPages}
-              className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              ›
-            </button>
-          </div>
-        </div>
+        <Pagination
+          currentPage={currentPage}
+          totalPages={Math.max(totalPages, 1)}
+          totalItems={filteredOrders.length}
+          startItem={filteredOrders.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}
+          endItem={currentPage * itemsPerPage}
+          onPageChange={setCurrentPage}
+          labelPrefix="Hien thi"
+        />
       </div>
     </div>
   );

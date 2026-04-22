@@ -5,9 +5,13 @@ import Flatpickr from "react-flatpickr";
 import { useLocation, useNavigate, useParams } from "react-router";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
+import Pagination from "../../components/common/Pagination";
 import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
 import { stockService, type StockCheck } from "../../services/stockService";
+import { warehouseService, type Warehouse } from "../../services/warehouseService";
+import { materialService, type Material } from "../../services/materialService";
+import { inventoryService, type InventoryItem } from "../../services/inventoryService";
 
 const ActionDropdown = ({
   onView,
@@ -61,6 +65,8 @@ type TeamMember = {
 
 type AssetRow = {
   id: string;
+  materialId?: number;
+  warehouseId?: number;
   warehouse: string;
   materialCode: string;
   materialName: string;
@@ -87,90 +93,21 @@ type StockCheckReceipt = {
   note?: string;
 };
 
-const SAMPLE_TEAM_MEMBERS: TeamMember[] = [
-  {
-    id: "tm-001",
-    name: "Nguyen Van A",
-    role: "To truong kiem ke",
-    note: "Phu trach tong hop so lieu",
-  },
-  {
-    id: "tm-002",
-    name: "Tran Thi B",
-    role: "Ke toan kho",
-    note: "Doi chieu chung tu",
-  },
-];
+type ExistingMemberOption = {
+  name: string;
+  role: string;
+  note: string;
+};
 
-
-const SAMPLE_ASSETS: AssetRow[] = [
-  {
-    id: "as-001",
-    warehouse: "Kho nguyen lieu",
-    materialCode: "NL-CAFE-001",
-    materialName: "Hat ca phe Arabica",
-    supplier: "Cong ty Nguyen Lieu A",
-    systemQty: 120,
-    checkQty: 118,
-    handlingProposal: "Nhap kho bu KK thieu",
-    recordedCheck: true,
-    status: "Luu kho",
-  },
-  {
-    id: "as-002",
-    warehouse: "Kho nguyen lieu",
-    materialCode: "NL-DUONG-002",
-    materialName: "Duong tinh luyen",
-    supplier: "Cong ty Thuc Pham B",
-    systemQty: 80,
-    checkQty: 82,
-    handlingProposal: "Xuat kho bu KK thua",
-    recordedCheck: true,
-    status: "Luan chuyen",
-  },
-];
-
-const MOCK_RECEIPTS: StockCheckReceipt[] = [
-  {
-    id: "sample-fe-001",
-    maPhieu: "KK-FE-MAU-001",
-    tenPhieu: "Phieu mau FE - kiem ke kho nguyen lieu",
-    khoKiemKe: "Kho nguyen lieu",
-    ngayTao: "2026-04-01",
-    nguoiTao: "Nguyen Van A",
-    tongVatTu: SAMPLE_ASSETS.length,
-    trangThai: "Nháp",
-    teamMembers: SAMPLE_TEAM_MEMBERS,
-    assets: SAMPLE_ASSETS,
-  },
-  {
-    id: "2",
-    maPhieu: "KK-20260328-002",
-    tenPhieu: "Kiểm kê kho lạnh cuối quý",
-    khoKiemKe: "Kho lạnh",
-    ngayTao: "2026-03-28",
-    nguoiTao: "Trần Thị B",
-    tongVatTu: 35,
-    trangThai: "Đã trình",
-  },
-  {
-    id: "3",
-    maPhieu: "KK-20260315-003",
-    tenPhieu: "Kiểm kê định kỳ kho chính",
-    khoKiemKe: "Kho chính",
-    ngayTao: "2026-03-15",
-    nguoiTao: "Phạm Văn C",
-    tongVatTu: 48,
-    trangThai: "Đã trình",
-  },
-];
-
-const DEFAULT_WAREHOUSE_OPTIONS = [
-  "Kho chính",
-  "Kho lạnh",
-  "Kho thành phẩm",
-  "Kho nguyên liệu",
-];
+type WarehouseMaterialOption = {
+  materialId: number;
+  warehouseId: number;
+  warehouseName: string;
+  code: string;
+  name: string;
+  supplier: string;
+  systemQty: number;
+};
 
 const HANDLING_OPTIONS = [
   "Thanh lý hủy",
@@ -201,7 +138,7 @@ export default function KiemKe() {
   const [view, setView] = useState<"list" | "create" | "detail">(
     resolveViewByPath(location.pathname),
   );
-  const [receipts, setReceipts] = useState<StockCheckReceipt[]>(MOCK_RECEIPTS);
+  const [receipts, setReceipts] = useState<StockCheckReceipt[]>([]);
   const [receiptSearchTerm, setReceiptSearchTerm] = useState("");
   const [receiptStatusFilter, setReceiptStatusFilter] = useState("Tất cả");
   const [currentPage, setCurrentPage] = useState(1);
@@ -209,6 +146,10 @@ export default function KiemKe() {
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [selectedWarehouseIds, setSelectedWarehouseIds] = useState<number[]>([]);
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [inventories, setInventories] = useState<InventoryItem[]>([]);
 
   const [formData, setFormData] = useState({
     code: "",
@@ -245,7 +186,10 @@ export default function KiemKe() {
   });
 
   const [assetDraft, setAssetDraft] = useState({
-    warehouse: "",
+    materialId: 0,
+    warehouseId: 0,
+    warehouseName: "",
+    materialSearch: "",
     materialCode: "",
     materialName: "",
     supplier: "",
@@ -261,7 +205,7 @@ export default function KiemKe() {
   const teamRef = useRef<HTMLDivElement>(null);
   const assetRef = useRef<HTMLDivElement>(null);
 
-  const scrollToSection = (ref: React.RefObject<HTMLDivElement>) => {
+  const scrollToSection = (ref: React.RefObject<HTMLDivElement | null>) => {
     if (ref.current) {
       ref.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
@@ -272,6 +216,8 @@ export default function KiemKe() {
   // Load stock checks from API on component mount
   useEffect(() => {
     loadStockChecks();
+    loadWarehouses();
+    loadMaterialSources();
   }, []);
 
   // Update view when pathname changes
@@ -298,6 +244,31 @@ export default function KiemKe() {
   //   loadAvailableStaff();
   // }, []);
 
+  const loadWarehouses = async () => {
+    try {
+      const data = await warehouseService.getAllWarehouses();
+      setWarehouses(data || []);
+    } catch (error) {
+      console.error("Error loading warehouses:", error);
+      showToast("Không thể tải danh sách kho", "error");
+    }
+  };
+
+  const loadMaterialSources = async () => {
+    try {
+      const [materialsData, inventoriesData] = await Promise.all([
+        materialService.getAllMaterials(),
+        inventoryService.getAllInventories(),
+      ]);
+
+      setMaterials(materialsData || []);
+      setInventories(inventoriesData || []);
+    } catch (error) {
+      console.error("Error loading material sources:", error);
+      showToast("Không thể tải danh sách vật tư theo kho", "error");
+    }
+  };
+
   const loadStockChecks = async () => {
     setIsLoading(true);
     try {
@@ -314,9 +285,15 @@ export default function KiemKe() {
         trangThai: (item.status === 'Pending' ? 'Nháp' : 'Đã trình') as 'Nháp' | 'Đã trình',
         endDate: item.endDate?.split('T')[0] || '',
         note: item.note || '',
-        teamMembers: [],  // Teams are loaded separately via API
+        teamMembers: (item.teams || []).map((team) => ({
+          id: team.id?.toString() || `${item.id}-${team.name}`,
+          name: team.name || '',
+          role: team.role || '',
+          note: team.note || '',
+        })),
         assets: (item.stockCheckDetails || []).map((detail) => ({
           id: detail.id?.toString() || '',
+          materialId: detail.materialId,
           warehouse: detail.warehouse?.name || '',
           materialCode: detail.material?.code || '',
           materialName: detail.material?.name || '',
@@ -332,7 +309,7 @@ export default function KiemKe() {
     } catch (error) {
       console.error('Error loading stock checks:', error);
       showToast('Lỗi tải dữ liệu kiểm kê', 'error');
-      // Keep mock data as fallback
+      // Keep current state as fallback
     } finally {
       setIsLoading(false);
     }
@@ -419,10 +396,10 @@ export default function KiemKe() {
       Number(summaryStats.teamCount > 0) +
       Number(summaryStats.assetCount > 0) +
       Number(formData.name.trim().length > 0) +
-      Number(formData.warehouseId > 0);
+      Number(selectedWarehouseIds.length > 0);
 
     return Math.min(100, completedCount * 25);
-  }, [formData.name, formData.warehouseId, summaryStats.assetCount, summaryStats.teamCount]);
+  }, [formData.name, selectedWarehouseIds.length, summaryStats.assetCount, summaryStats.teamCount]);
 
   const receiptSummary = useMemo(() => {
     const draftCount = receipts.filter((r) => r.trangThai === "Nháp").length;
@@ -455,17 +432,193 @@ export default function KiemKe() {
     });
   }, [receiptSearchTerm, receiptStatusFilter, receipts]);
 
+  const availableExistingMembers = useMemo(() => {
+    const memberByName = new Map<string, ExistingMemberOption>();
+
+    for (const receipt of receipts) {
+      for (const member of receipt.teamMembers || []) {
+        const name = member.name?.trim();
+        if (!name) continue;
+
+        const key = name.toLowerCase();
+        const existing = memberByName.get(key);
+
+        if (!existing || (!existing.role && member.role) || (!existing.note && member.note)) {
+          memberByName.set(key, {
+            name,
+            role: member.role?.trim() || "",
+            note: member.note?.trim() || "",
+          });
+        }
+      }
+
+      const createdBy = receipt.nguoiTao?.trim();
+      if (createdBy && createdBy !== "Chưa cập nhật") {
+        const key = createdBy.toLowerCase();
+        if (!memberByName.has(key)) {
+          memberByName.set(key, {
+            name: createdBy,
+            role: "",
+            note: "",
+          });
+        }
+      }
+    }
+
+    const selectedNames = new Set(teamMembers.map((member) => member.name.trim().toLowerCase()));
+
+    return Array.from(memberByName.values())
+      .filter((member) => !selectedNames.has(member.name.toLowerCase()))
+      .sort((a, b) => a.name.localeCompare(b.name, "vi"));
+  }, [receipts, teamMembers]);
+
+  const selectedExistingMember = useMemo(
+    () => availableExistingMembers.find((member) => member.name === memberInput.name),
+    [availableExistingMembers, memberInput.name]
+  );
+
+  const selectedWarehouseNames = useMemo(
+    () =>
+      warehouses
+        .filter((warehouse) => warehouse.id && selectedWarehouseIds.includes(warehouse.id))
+        .map((warehouse) => warehouse.name),
+    [warehouses, selectedWarehouseIds]
+  );
+
+  const warehouseMaterialOptions = useMemo(() => {
+    if (selectedWarehouseIds.length === 0) {
+      return [] as WarehouseMaterialOption[];
+    }
+
+    const warehouseMap = new Map<number, string>();
+    for (const warehouse of warehouses) {
+      if (warehouse.id) {
+        warehouseMap.set(warehouse.id, warehouse.name);
+      }
+    }
+
+    const materialStockMap = new Map<string, number>();
+    for (const item of inventories) {
+      if (!selectedWarehouseIds.includes(item.warehouseId)) continue;
+      const key = `${item.warehouseId}-${item.materialId}`;
+      materialStockMap.set(key, Number(item.quantity) || 0);
+    }
+
+    const options: WarehouseMaterialOption[] = [];
+    for (const material of materials) {
+      if (!material.id) continue;
+
+      for (const warehouseId of selectedWarehouseIds) {
+        const key = `${warehouseId}-${material.id}`;
+        if (!materialStockMap.has(key)) continue;
+
+        options.push({
+          materialId: material.id,
+          warehouseId,
+          warehouseName: warehouseMap.get(warehouseId) || `Kho #${warehouseId}`,
+          code: material.code || "",
+          name: material.name || "",
+          supplier: material.supplier?.name || "",
+          systemQty: materialStockMap.get(key) || 0,
+        });
+      }
+    }
+
+    return options
+      .sort((a, b) => a.name.localeCompare(b.name, "vi"));
+  }, [materials, inventories, selectedWarehouseIds, warehouses]);
+
+  const filteredMaterialOptions = useMemo(() => {
+    const keyword = assetDraft.materialSearch.trim().toLowerCase();
+    if (!keyword) return warehouseMaterialOptions;
+
+    return warehouseMaterialOptions.filter((option) => {
+      const label = `${option.code} ${option.name} ${option.supplier} ${option.warehouseName}`.toLowerCase();
+      return label.includes(keyword);
+    });
+  }, [warehouseMaterialOptions, assetDraft.materialSearch]);
+
+  const handleSelectMaterialFromWarehouse = (option: WarehouseMaterialOption) => {
+    setAssetDraft((prev) => ({
+      ...prev,
+      materialId: option.materialId,
+      warehouseId: option.warehouseId,
+      warehouseName: option.warehouseName,
+      materialSearch: `${option.code} - ${option.name} (${option.warehouseName})`,
+      materialCode: option.code,
+      materialName: option.name,
+      supplier: option.supplier,
+      systemQty: String(option.systemQty),
+      checkQty: prev.checkQty === "0" ? String(option.systemQty) : prev.checkQty,
+    }));
+  };
+
+  const handleMaterialSearchInputChange = (input: string) => {
+    const keyword = input.trim().toLowerCase();
+    const exactMatch = warehouseMaterialOptions.find((option) => {
+      const fullLabel = `${option.code} - ${option.name}`.toLowerCase();
+      return fullLabel === keyword || option.code.toLowerCase() === keyword || option.name.toLowerCase() === keyword;
+    });
+
+    if (exactMatch) {
+      handleSelectMaterialFromWarehouse(exactMatch);
+      return;
+    }
+
+    setAssetDraft((prev) => ({
+      ...prev,
+      materialSearch: input,
+      materialId: 0,
+      warehouseId: 0,
+      warehouseName: "",
+      materialCode: "",
+      materialName: "",
+      supplier: "",
+    }));
+  };
+
+  const handleOpenAssetModal = () => {
+    if (selectedWarehouseIds.length === 0) {
+      showToast("Vui lòng chọn ít nhất một kho kiểm kê ở phần Thông tin chung", "warning");
+      return;
+    }
+
+    setAssetDraft((prev) => ({
+      ...prev,
+      materialId: 0,
+      warehouseId: 0,
+      warehouseName: "",
+      materialSearch: "",
+      materialCode: "",
+      materialName: "",
+      supplier: "",
+      systemQty: "0",
+      checkQty: "0",
+      handlingProposal: "",
+      recordedCheck: true,
+      status: "",
+    }));
+    setShowAssetModal(true);
+  };
+
   const handleAddExistingMember = () => {
     if (!memberInput.name.trim()) {
       showToast("Vui lòng chọn người kiểm kê", "warning");
       return;
     }
 
+    const selectedName = memberInput.name.trim();
+    const selectedMember = availableExistingMembers.find((member) => member.name === selectedName);
+    if (!selectedMember) {
+      showToast("Vui lòng chọn người từ danh sách có sẵn", "warning");
+      return;
+    }
+
     const next: TeamMember = {
       id: `${Date.now()}`,
-      name: memberInput.name.trim(),
-      role: "", // Không có chức danh khi chọn người có sẵn
-      note: "", // Không có ghi chú khi chọn người có sẵn
+      name: selectedName,
+      role: selectedMember.role,
+      note: selectedMember.note,
     };
 
     setTeamMembers((prev) => [...prev, next]);
@@ -497,46 +650,48 @@ export default function KiemKe() {
 
   const handleSaveDraft = async () => {
     if (isSaving) return;
+    if (selectedWarehouseIds.length === 0) {
+      showToast("Vui lòng chọn ít nhất một kho kiểm kê", "warning");
+      return;
+    }
     
     setIsSaving(true);
     try {
-      // Create StockCheck
-      const stockCheckData: Omit<StockCheck, "id" | "createdTime"> = {
-        code: generatedCode,
-        name: formData.name.trim() || "Chưa đặt tên phiếu",
-        warehouseId: formData.warehouseId || 1,
-        startDate: formData.startDate,
-        endDate: formData.endDate,
-        createdBy: formData.createdBy.trim() || "Chưa cập nhật",
-        status: "Pending",
-      };
+      for (const warehouseId of selectedWarehouseIds) {
+        const stockCheckData: Omit<StockCheck, "id" | "createdTime"> = {
+          code: selectedWarehouseIds.length > 1 ? `${generatedCode}-K${warehouseId}` : generatedCode,
+          name: formData.name.trim() || "Chưa đặt tên phiếu",
+          warehouseId,
+          startDate: formData.startDate,
+          endDate: formData.endDate,
+          createdBy: formData.createdBy.trim() || "Chưa cập nhật",
+          status: "Pending",
+        };
 
-      const createdStockCheck = await stockService.createStockCheck(stockCheckData);
-      
-      // Create stock details
-      if (createdStockCheck.id && assetRows.length > 0) {
-        for (const asset of assetRows) {
-          await stockService.createStockDetail({
-            stockCheckId: createdStockCheck.id,
-            materialId: 1, // TODO: Get from material selector
-            systemQuantity: asset.systemQty,
-            actualQuantity: asset.checkQty,
-            handlingProposal: asset.handlingProposal,
-          });
+        const createdStockCheck = await stockService.createStockCheck(stockCheckData);
+
+        if (createdStockCheck.id && assetRows.length > 0) {
+          for (const asset of assetRows.filter((row) => row.warehouseId === warehouseId)) {
+            if (!asset.materialId) continue;
+            await stockService.createStockDetail({
+              stockCheckId: createdStockCheck.id,
+              materialId: asset.materialId,
+              warehouseId,
+              systemQuantity: asset.systemQty,
+              actualQuantity: asset.checkQty,
+              handlingProposal: asset.handlingProposal,
+            });
+          }
         }
-      }
 
-      // Create team members
-      if (createdStockCheck.id && teamMembers.length > 0) {
-        for (const member of teamMembers) {
-          await stockService.createStockTeam(
-            createdStockCheck.id,
-            {
+        if (createdStockCheck.id && teamMembers.length > 0) {
+          for (const member of teamMembers) {
+            await stockService.createStockTeam(createdStockCheck.id, {
               name: member.name,
               role: member.role,
               note: member.note,
-            }
-          );
+            });
+          }
         }
       }
 
@@ -553,46 +708,48 @@ export default function KiemKe() {
 
   const handleCreateRequest = async () => {
     if (isSaving) return;
+    if (selectedWarehouseIds.length === 0) {
+      showToast("Vui lòng chọn ít nhất một kho kiểm kê", "warning");
+      return;
+    }
 
     setIsSaving(true);
     try {
-      // Create StockCheck with Approved status
-      const stockCheckData: Omit<StockCheck, "id" | "createdTime"> = {
-        code: generatedCode,
-        name: formData.name.trim() || "Chưa đặt tên phiếu",
-        warehouseId: formData.warehouseId || 1,
-        startDate: formData.startDate,
-        endDate: formData.endDate,
-        createdBy: formData.createdBy.trim() || "Chưa cập nhật",
-        status: "Approved",
-      };
+      for (const warehouseId of selectedWarehouseIds) {
+        const stockCheckData: Omit<StockCheck, "id" | "createdTime"> = {
+          code: selectedWarehouseIds.length > 1 ? `${generatedCode}-K${warehouseId}` : generatedCode,
+          name: formData.name.trim() || "Chưa đặt tên phiếu",
+          warehouseId,
+          startDate: formData.startDate,
+          endDate: formData.endDate,
+          createdBy: formData.createdBy.trim() || "Chưa cập nhật",
+          status: "Approved",
+        };
 
-      const createdStockCheck = await stockService.createStockCheck(stockCheckData);
+        const createdStockCheck = await stockService.createStockCheck(stockCheckData);
 
-      // Create stock details
-      if (createdStockCheck.id && assetRows.length > 0) {
-        for (const asset of assetRows) {
-          await stockService.createStockDetail({
-            stockCheckId: createdStockCheck.id,
-            materialId: 1, // TODO: Get from material selector
-            systemQuantity: asset.systemQty,
-            actualQuantity: asset.checkQty,
-            handlingProposal: asset.handlingProposal,
-          });
+        if (createdStockCheck.id && assetRows.length > 0) {
+          for (const asset of assetRows.filter((row) => row.warehouseId === warehouseId)) {
+            if (!asset.materialId) continue;
+            await stockService.createStockDetail({
+              stockCheckId: createdStockCheck.id,
+              materialId: asset.materialId,
+              warehouseId,
+              systemQuantity: asset.systemQty,
+              actualQuantity: asset.checkQty,
+              handlingProposal: asset.handlingProposal,
+            });
+          }
         }
-      }
 
-      // Create team members
-      if (createdStockCheck.id && teamMembers.length > 0) {
-        for (const member of teamMembers) {
-          await stockService.createStockTeam(
-            createdStockCheck.id,
-            {
+        if (createdStockCheck.id && teamMembers.length > 0) {
+          for (const member of teamMembers) {
+            await stockService.createStockTeam(createdStockCheck.id, {
               name: member.name,
               role: member.role,
               note: member.note,
-            }
-          );
+            });
+          }
         }
       }
 
@@ -608,23 +765,60 @@ export default function KiemKe() {
   };
 
   const handleOpenReceipt = (receipt: StockCheckReceipt) => {
-    setFormData((prev) => ({
-      ...prev,
-      name: receipt.tenPhieu,
-      startDate: receipt.ngayTao,
-      createdBy: receipt.nguoiTao === "Chưa cập nhật" ? "" : receipt.nguoiTao,
-      code: receipt.maPhieu,
-    }));
-    setTeamMembers(receipt.teamMembers || []);
-    setAssetRows(receipt.assets || []);
-    setAssetFilter({
-      keyword: "",
-      discrepancyType: "Tất cả",
-      warehouse: "",
-    });
-    setView("create");
-    navigate("/kiem-ke/tao-moi");
-    showToast("Đã nạp dữ liệu phiếu vào biểu mẫu", "success");
+    void (async () => {
+      try {
+        const stockCheck = await stockService.getStockCheckById(Number(receipt.id));
+
+        setFormData({
+          code: stockCheck.code || receipt.maPhieu,
+          name: stockCheck.name || receipt.tenPhieu,
+          warehouseId: stockCheck.warehouseId || 0,
+          startDate: stockCheck.startDate?.split("T")[0] || receipt.ngayTao,
+          endDate: stockCheck.endDate?.split("T")[0] || receipt.endDate || "",
+          createdBy: stockCheck.createdBy || (receipt.nguoiTao === "Chưa cập nhật" ? "" : receipt.nguoiTao),
+          status: stockCheck.status || (receipt.trangThai === "Nháp" ? "Pending" : "Approved"),
+        });
+        setSelectedWarehouseIds(stockCheck.warehouseId ? [stockCheck.warehouseId] : []);
+
+        setTeamMembers(
+          (stockCheck.teams || []).map((team) => ({
+            id: team.id?.toString() || `${Date.now()}-${team.name}`,
+            name: team.name || "",
+            role: team.role || "",
+            note: team.note || "",
+          }))
+        );
+
+        setAssetRows(
+          (stockCheck.stockCheckDetails || []).map((detail) => ({
+            id: detail.id?.toString() || `${Date.now()}-${detail.materialId}`,
+            materialId: detail.materialId,
+            warehouseId: detail.warehouseId || stockCheck.warehouseId,
+            warehouse: detail.warehouse?.name || receipt.khoKiemKe || "Kho chính",
+            materialCode: detail.material?.code || "",
+            materialName: detail.material?.name || "",
+            supplier: "",
+            systemQty: Number(detail.systemQuantity) || 0,
+            checkQty: Number(detail.actualQuantity) || 0,
+            handlingProposal: detail.handlingProposal || "",
+            recordedCheck: detail.recordedCheck ?? true,
+            status: detail.status || "",
+          }))
+        );
+
+        setAssetFilter({
+          keyword: "",
+          discrepancyType: "Tất cả",
+          warehouse: "",
+        });
+        setView("create");
+        navigate("/kiem-ke/tao-moi");
+        showToast("Đã nạp dữ liệu phiếu từ API vào biểu mẫu", "success");
+      } catch (error) {
+        console.error("Error loading stock check for edit:", error);
+        showToast("Không thể tải dữ liệu phiếu kiểm kê từ API", "error");
+      }
+    })();
   };
 
   const handleViewReceipt = (receipt: StockCheckReceipt) => {
@@ -641,6 +835,7 @@ export default function KiemKe() {
       createdBy: "",
       status: "Pending",
     });
+    setSelectedWarehouseIds([]);
     setTeamMembers([]);
     setAssetRows([]);
     setView("create");
@@ -721,8 +916,13 @@ export default function KiemKe() {
   const paginatedReceipts = filteredReceipts.slice(startIndex, startIndex + itemsPerPage);
 
   const handleAddAsset = () => {
-    if (!assetDraft.materialCode.trim() || !assetDraft.materialName.trim()) {
-      showToast("Vui lòng nhập mã vật tư và tên vật tư", "warning");
+    if (selectedWarehouseIds.length === 0) {
+      showToast("Vui lòng chọn ít nhất một kho kiểm kê ở phần Thông tin chung", "warning");
+      return;
+    }
+
+    if (!assetDraft.materialId || !assetDraft.warehouseId || !assetDraft.materialCode.trim() || !assetDraft.materialName.trim()) {
+      showToast("Vui lòng chọn vật tư từ danh sách của kho", "warning");
       return;
     }
 
@@ -731,7 +931,9 @@ export default function KiemKe() {
 
     const nextRow: AssetRow = {
       id: `${Date.now()}`,
-      warehouse: assetDraft.warehouse || "Kho chính",
+      materialId: assetDraft.materialId,
+      warehouseId: assetDraft.warehouseId,
+      warehouse: assetDraft.warehouseName || "Chưa chọn kho",
       materialCode: assetDraft.materialCode.trim(),
       materialName: assetDraft.materialName.trim(),
       supplier: assetDraft.supplier.trim(),
@@ -749,7 +951,10 @@ export default function KiemKe() {
       warehouse: "",
     });
     setAssetDraft({
-      warehouse: "",
+      materialId: 0,
+      warehouseId: 0,
+      warehouseName: "",
+      materialSearch: "",
       materialCode: "",
       materialName: "",
       supplier: "",
@@ -1028,76 +1233,14 @@ export default function KiemKe() {
 
             {/* Pagination */}
             {filteredReceipts.length > 0 && (
-              <div className="px-5 lg:px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Đang hiển thị <span className="font-medium text-gray-900 dark:text-white">{startIndex + 1}</span> - <span className="font-medium text-gray-900 dark:text-white">{Math.min(startIndex + itemsPerPage, filteredReceipts.length)}</span> trên <span className="font-medium text-gray-900 dark:text-white">{filteredReceipts.length}</span>
-                </p>
-                <div className="flex items-center gap-2">
-                  <button 
-                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                    disabled={currentPage === 1}
-                    className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-                    </svg>
-                  </button>
-                  {(() => {
-                    const pages = [];
-                    const maxVisible = 5;
-                    let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
-                    let endPage = Math.min(totalPages, startPage + maxVisible - 1);
-                    if (endPage - startPage + 1 < maxVisible) {
-                      startPage = Math.max(1, endPage - maxVisible + 1);
-                    }
-
-                    pages.push(1);
-                    if (startPage > 2) {
-                      pages.push('...');
-                    }
-                    for (let i = Math.max(2, startPage); i <= Math.min(totalPages - 1, endPage); i++) {
-                      if (!pages.includes(i)) {
-                        pages.push(i);
-                      }
-                    }
-                    if (endPage < totalPages - 1) {
-                      pages.push('...');
-                    }
-                    if (totalPages > 1 && !pages.includes(totalPages)) {
-                      pages.push(totalPages);
-                    }
-
-                    return pages.map((page, idx) => (
-                      page === '...' ? (
-                        <span key={`ellipsis-${idx}`} className="text-gray-500 dark:text-gray-400">
-                          ...
-                        </span>
-                      ) : (
-                        <button
-                          key={`page-${page}`}
-                          onClick={() => setCurrentPage(Number(page))}
-                          className={`px-3 py-1 rounded-md text-sm font-medium transition-all duration-200 ${
-                            currentPage === page
-                              ? "bg-blue-600 text-white"
-                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                          }`}
-                        >
-                          {page}
-                        </button>
-                      )
-                    ));
-                  })()}
-                  <button 
-                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                    disabled={currentPage === totalPages}
-                    className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={filteredReceipts.length}
+                startItem={startIndex + 1}
+                endItem={startIndex + itemsPerPage}
+                onPageChange={setCurrentPage}
+              />
             )}
           </div>
         </>
@@ -1208,7 +1351,7 @@ export default function KiemKe() {
               <QuickStat
                 colorClass="bg-cyan-600"
                 label="Mã phiếu"
-                value={generatedCode}
+                value={formData.code}
                 icon={
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -1269,7 +1412,12 @@ export default function KiemKe() {
               </div>
 
               <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
-                <Field label="Mã phiếu kiểm kê" value={generatedCode} readOnly />
+                <Field 
+                  label="Mã phiếu kiểm kê"
+                  value={formData.code}
+                  onChange={(v) => setFormData((p) => ({ ...p, code: v }))}
+                  placeholder="Nhập mã phiếu"
+                />
                 <Field
                   label="Tên phiếu"
                   value={formData.name}
@@ -1285,18 +1433,21 @@ export default function KiemKe() {
 
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Kho kiểm kê</label>
-                  <select
-                    value={formData.warehouseId}
-                    onChange={(e) => setFormData((p) => ({ ...p, warehouseId: parseInt(e.target.value) || 0 }))}
-                    className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                  >
-                    <option value={0}>Chọn kho kiểm kê</option>
-                    {DEFAULT_WAREHOUSE_OPTIONS.map((kho, idx) => (
-                      <option key={kho} value={idx + 1}>
-                        {kho}
-                      </option>
-                    ))}
-                  </select>
+                  <CustomMultiSelect
+                    values={selectedWarehouseIds.map(String)}
+                    onChange={(values) => {
+                      const ids = values.map((value) => parseInt(value)).filter((id) => !Number.isNaN(id) && id > 0);
+                      setSelectedWarehouseIds(ids);
+                      setFormData((p) => ({ ...p, warehouseId: ids[0] || 0 }));
+                    }}
+                    options={[
+                      ...warehouses.map((kho) => ({
+                        value: String(kho.id ?? 0),
+                        label: kho.name,
+                      })),
+                    ]}
+                    placeholder="Chọn một hoặc nhiều kho kiểm kê"
+                  />
                 </div>
 
                 <DatePickerField
@@ -1367,13 +1518,21 @@ export default function KiemKe() {
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-3 md:items-end">
                         {/* Staff Selection Input */}
                         <div className="relative md:col-span-2">
-                          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Nhập tên người</label>
-                          <input
-                            type="text"
+                          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Chọn người từ danh sách</label>
+                          <CustomSelect
                             value={memberInput.name}
-                            onChange={(e) => setMemberInput((p) => ({ ...p, name: e.target.value }))}
-                            placeholder="Nhập tên người kiểm kê"
-                            className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                            onChange={(value) => setMemberInput((p) => ({ ...p, name: value }))}
+                            disabled={availableExistingMembers.length === 0}
+                            options={[
+                              {
+                                value: "",
+                                label: availableExistingMembers.length === 0 ? "Không có người trong danh sách" : "Chọn người kiểm kê",
+                              },
+                              ...availableExistingMembers.map((member) => ({
+                                value: member.name,
+                                label: member.name,
+                              })),
+                            ]}
                           />
                         </div>
 
@@ -1388,10 +1547,21 @@ export default function KiemKe() {
                           Thêm
                         </button>
                       </div>
+
+                      {selectedExistingMember && (
+                        <div className="mt-3 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-900 dark:border-indigo-900/40 dark:bg-indigo-900/20 dark:text-indigo-200">
+                          <p>
+                            Chức danh: {selectedExistingMember.role || "Chưa có"}
+                          </p>
+                          <p>
+                            Ghi chú: {selectedExistingMember.note || "Không có"}
+                          </p>
+                        </div>
+                      )}
                     </div>
                     <div className="rounded-lg border-l-4 border-blue-500 bg-blue-50 p-3 dark:bg-blue-900/20">
                       <p className="text-xs font-medium text-blue-800 dark:text-blue-300">
-                        💡 Gợi ý: Chọn tên người từ danh sách và click "Thêm" để thêm vào tổ kiểm kê.
+                        💡 Danh sách người được lấy từ dữ liệu API (người tạo và thành viên các phiếu trước đó).
                       </p>
                     </div>
                   </div>
@@ -1549,9 +1719,9 @@ export default function KiemKe() {
                     onChange={(value) => setAssetFilter((p) => ({ ...p, warehouse: value }))}
                     options={[
                       { value: "", label: "Chọn kho" },
-                      ...DEFAULT_WAREHOUSE_OPTIONS.map((warehouse) => ({
-                        value: warehouse,
-                        label: warehouse,
+                      ...warehouses.map((warehouse) => ({
+                        value: warehouse.name,
+                        label: warehouse.name,
                       })),
                     ]}
                     buttonClassName="sm:min-w-[140px]"
@@ -1574,7 +1744,7 @@ export default function KiemKe() {
                     </svg>
                   </button>
                   <button
-                    onClick={() => setShowAssetModal(true)}
+                    onClick={handleOpenAssetModal}
                     className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1593,8 +1763,8 @@ export default function KiemKe() {
                       <th className="px-3 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">STT</th>
                       <th className="px-3 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Mã VT</th>
                       <th className="px-3 py-3 font-semibold text-gray-600 dark:text-gray-300">Tên vật tư</th>
-                      <th className="px-3 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">SL HT</th>
-                      <th className="px-3 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">SL KK</th>
+                      <th className="px-3 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Số lượng hệ thống</th>
+                      <th className="px-3 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Số lượng kiểm kê</th>
                       <th className="px-3 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Chênh lệch</th>
                       <th className="px-3 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Đề nghị xử lý</th>
                       <th className="px-3 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Ghi nhận</th>
@@ -1644,22 +1814,23 @@ export default function KiemKe() {
                             </td>
                             <td className={`px-3 py-3 font-semibold text-center whitespace-nowrap ${diffClass}`}>{diff > 0 ? `+${diff}` : diff}</td>
                             <td className="px-3 py-3">
-                              <select
+                              <CustomSelect
                                 value={row.handlingProposal}
-                                onChange={(e) =>
+                                onChange={(value) =>
                                   handleUpdateAsset(row.id, {
-                                    handlingProposal: e.target.value,
+                                    handlingProposal: value,
                                   })
                                 }
-                                className="h-8 rounded border border-gray-300 bg-white px-2 text-xs text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white transition-colors cursor-pointer hover:border-emerald-400 dark:hover:border-emerald-500"
-                              >
-                                <option value="">Chọn xử lý</option>
-                                {HANDLING_OPTIONS.map((option) => (
-                                  <option key={option} value={option}>
-                                    {option}
-                                  </option>
-                                ))}
-                              </select>
+                                options={[
+                                  { value: "", label: "Chọn xử lý" },
+                                  ...HANDLING_OPTIONS.map((option) => ({
+                                    value: option,
+                                    label: option,
+                                  })),
+                                ]}
+                                size="sm"
+                                buttonClassName="w-[170px]"
+                              />
                             </td>
                             <td className="px-3 py-3">
                               <label className="inline-flex items-center cursor-pointer">
@@ -1676,21 +1847,20 @@ export default function KiemKe() {
                               </label>
                             </td>
                             <td className="px-3 py-3">
-                              <select
+                              <CustomSelect
                                 value={row.status}
-                                onChange={(e) =>
+                                onChange={(value) =>
                                   handleUpdateAsset(row.id, {
-                                    status: e.target.value,
+                                    status: value,
                                   })
                                 }
-                                className="h-8 rounded border border-gray-300 bg-white px-2 text-xs text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white transition-colors cursor-pointer hover:border-emerald-400 dark:hover:border-emerald-500"
-                              >
-                                {STATUS_OPTIONS.map((status) => (
-                                  <option key={status} value={status}>
-                                    {status}
-                                  </option>
-                                ))}
-                              </select>
+                                options={STATUS_OPTIONS.map((status) => ({
+                                  value: status,
+                                  label: status,
+                                }))}
+                                size="sm"
+                                buttonClassName="w-[130px]"
+                              />
                             </td>
                             <td className="px-3 py-3">
                               <button
@@ -1885,38 +2055,48 @@ export default function KiemKe() {
             <div className="max-h-[70vh] overflow-y-auto p-6 space-y-4">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Chọn kho</label>
-                  <select
-                    value={assetDraft.warehouse}
-                    onChange={(e) => setAssetDraft((p) => ({ ...p, warehouse: e.target.value }))}
-                    className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                  >
-                    <option value="">Chọn kho</option>
-                    {DEFAULT_WAREHOUSE_OPTIONS.map((warehouse) => (
-                      <option key={warehouse} value={warehouse}>
-                        {warehouse}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Kho kiểm kê</label>
+                  <div className="h-10 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white flex items-center">
+                    {selectedWarehouseNames.length > 0 ? selectedWarehouseNames.join(", ") : "Chưa chọn kho"}
+                  </div>
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Nhà cung cấp</label>
-                  <input
-                    value={assetDraft.supplier}
-                    onChange={(e) => setAssetDraft((p) => ({ ...p, supplier: e.target.value }))}
-                    placeholder="Nhập tên NCC"
-                    className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                  />
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Vật tư *</label>
+                  <div className="space-y-2">
+                    <input
+                      value={assetDraft.materialSearch}
+                      onChange={(e) => handleMaterialSearchInputChange(e.target.value)}
+                      placeholder="Nhập để tìm vật tư theo mã hoặc tên"
+                      className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                    />
+                    <div className="max-h-40 overflow-auto rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+                      {filteredMaterialOptions.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">Không có vật tư thuộc kho đã chọn</p>
+                      ) : (
+                        filteredMaterialOptions.map((option) => (
+                          <button
+                            key={`${option.warehouseId}-${option.materialId}`}
+                            type="button"
+                            onClick={() => handleSelectMaterialFromWarehouse(option)}
+                            className="flex w-full items-start justify-between gap-2 border-b border-gray-100 px-3 py-2 text-left text-xs text-gray-700 hover:bg-blue-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-blue-900/20"
+                          >
+                            <span>{option.code} - {option.name} ({option.warehouseName})</span>
+                            <span className="text-gray-500 dark:text-gray-400">SL: {option.systemQty}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Mã vật tư *</label>
                   <input
                     value={assetDraft.materialCode}
-                    onChange={(e) => setAssetDraft((p) => ({ ...p, materialCode: e.target.value }))}
-                    placeholder="Nhập mã vật tư"
-                    className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                    readOnly
+                    placeholder="Tự động theo vật tư đã chọn"
+                    className="h-10 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 text-sm text-gray-900 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-white"
                   />
                 </div>
 
@@ -1924,9 +2104,19 @@ export default function KiemKe() {
                   <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Tên vật tư *</label>
                   <input
                     value={assetDraft.materialName}
-                    onChange={(e) => setAssetDraft((p) => ({ ...p, materialName: e.target.value }))}
-                    placeholder="Nhập tên vật tư"
-                    className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                    readOnly
+                    placeholder="Tự động theo vật tư đã chọn"
+                    className="h-10 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 text-sm text-gray-900 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Nhà cung cấp</label>
+                  <input
+                    value={assetDraft.supplier}
+                    readOnly
+                    placeholder="Tự động theo vật tư đã chọn"
+                    className="h-10 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 text-sm text-gray-900 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-white"
                   />
                 </div>
 
@@ -1954,34 +2144,32 @@ export default function KiemKe() {
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Đề nghị xử lý</label>
-                  <select
+                  <CustomSelect
                     value={assetDraft.handlingProposal}
-                    onChange={(e) => setAssetDraft((p) => ({ ...p, handlingProposal: e.target.value }))}
-                    className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                  >
-                    <option value="">Chọn đề nghị xử lý</option>
-                    {HANDLING_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(value) => setAssetDraft((p) => ({ ...p, handlingProposal: value }))}
+                    options={[
+                      { value: "", label: "Chọn đề nghị xử lý" },
+                      ...HANDLING_OPTIONS.map((option) => ({
+                        value: option,
+                        label: option,
+                      })),
+                    ]}
+                  />
                 </div>
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Trạng thái</label>
-                  <select
+                  <CustomSelect
                     value={assetDraft.status}
-                    onChange={(e) => setAssetDraft((p) => ({ ...p, status: e.target.value }))}
-                    className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                  >
-                    <option value="">Chọn trạng thái</option>
-                    {STATUS_OPTIONS.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(value) => setAssetDraft((p) => ({ ...p, status: value }))}
+                    options={[
+                      { value: "", label: "Chọn trạng thái" },
+                      ...STATUS_OPTIONS.map((status) => ({
+                        value: status,
+                        label: status,
+                      })),
+                    ]}
+                  />
                 </div>
 
                 <div className="md:col-span-2">
@@ -2048,6 +2236,16 @@ type CustomSelectProps = {
   value: string;
   onChange: (value: string) => void;
   options: SelectOption[];
+  buttonClassName?: string;
+  size?: "md" | "sm";
+  disabled?: boolean;
+};
+
+type CustomMultiSelectProps = {
+  values: string[];
+  onChange: (values: string[]) => void;
+  options: SelectOption[];
+  placeholder?: string;
   buttonClassName?: string;
 };
 
@@ -2152,9 +2350,18 @@ function DatePickerField({
   );
 }
 
-function CustomSelect({ value, onChange, options, buttonClassName = "" }: CustomSelectProps) {
+function CustomSelect({
+  value,
+  onChange,
+  options,
+  buttonClassName = "",
+  size = "md",
+  disabled = false,
+}: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
+
+  const sizeClass = size === "sm" ? "h-8 px-2 text-xs" : "h-10 px-3 text-sm";
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -2173,8 +2380,9 @@ function CustomSelect({ value, onChange, options, buttonClassName = "" }: Custom
     <div ref={wrapperRef} className={`relative ${buttonClassName}`}>
       <button
         type="button"
+        disabled={disabled}
         onClick={() => setIsOpen((prev) => !prev)}
-        className="flex h-10 w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm transition-colors hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+        className={`flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white text-gray-900 shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white ${sizeClass} ${disabled ? "cursor-not-allowed opacity-60" : "hover:border-blue-400"}`}
       >
         <span className="truncate">{selectedOption?.label}</span>
         <svg
@@ -2213,6 +2421,84 @@ function CustomSelect({ value, onChange, options, buttonClassName = "" }: Custom
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                       </svg>
                     )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CustomMultiSelect({
+  values,
+  onChange,
+  options,
+  placeholder = "Chọn mục",
+  buttonClassName = "",
+}: CustomMultiSelectProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selectedLabels = options.filter((opt) => values.includes(opt.value)).map((opt) => opt.label);
+
+  const toggleValue = (value: string) => {
+    if (values.includes(value)) {
+      onChange(values.filter((item) => item !== value));
+    } else {
+      onChange([...values, value]);
+    }
+  };
+
+  return (
+    <div ref={wrapperRef} className={`relative ${buttonClassName}`}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="flex h-10 w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm transition-colors hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+      >
+        <span className="truncate">{selectedLabels.length > 0 ? selectedLabels.join(", ") : placeholder}</span>
+        <svg
+          className={`h-4 w-4 text-gray-500 transition-transform dark:text-gray-300 ${isOpen ? "rotate-180" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-lg border border-blue-100 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+          <ul className="max-h-56 overflow-auto py-1">
+            {options.map((option) => {
+              const isChecked = values.includes(option.value);
+              return (
+                <li key={`${option.value}-${option.label}`}>
+                  <button
+                    type="button"
+                    onClick={() => toggleValue(option.value)}
+                    className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors ${
+                      isChecked
+                        ? "bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300"
+                        : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+                    }`}
+                  >
+                    <span>{option.label}</span>
+                    <input type="checkbox" readOnly checked={isChecked} className="h-4 w-4" />
                   </button>
                 </li>
               );

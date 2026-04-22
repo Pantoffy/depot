@@ -10,7 +10,6 @@ export interface Material {
   unitId: number;
   unitName: string;
   supplierId: number;
-  stockQuantity: number;
   note?: string;
   status?: string;
   createdTime?: string;

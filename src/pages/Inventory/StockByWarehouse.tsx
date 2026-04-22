@@ -3,9 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
+import Pagination from "../../components/common/Pagination";
 import { showToast } from "../../components/common/Toast";
+import { exportService } from "../../services/exportService";
+import { importService } from "../../services/importService";
 import { inventoryService } from "../../services/inventoryService";
 import { materialService } from "../../services/materialService";
+import { unitService } from "../../services/unitService";
 import { warehouseService, Warehouse } from "../../services/warehouseService";
 
 // Dropdown Action Component
@@ -15,10 +19,10 @@ const ActionDropdown = ({
   onView: () => void;
 }) => {
   return (
-    <div className="flex gap-2">
+    <div className="flex items-center justify-center gap-2">
       <button
         onClick={onView}
-        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-700"
         title="Xem chi tiết"
       >
         <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -41,6 +45,9 @@ interface StockItem {
   unitName: string;
   categoryName: string;
   updatedDate?: string;
+  lastImportDate?: string;
+  lastExportDate?: string;
+  exportCount: number;
 }
 
 type SelectOption = {
@@ -59,6 +66,25 @@ export default function StockByWarehouse() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
+  const isApprovedReceipt = (status?: string) => {
+    const normalized = String(status || "")
+      .trim()
+      .toLowerCase();
+
+    return (
+      normalized === "approved" ||
+      normalized === "confirmed" ||
+      normalized === "đã xác nhận" ||
+      normalized === "da xac nhan"
+    );
+  };
+
+  const getDateTimestamp = (value?: string) => {
+    if (!value) return 0;
+    const t = new Date(value).getTime();
+    return Number.isNaN(t) ? 0 : t;
+  };
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -66,18 +92,105 @@ export default function StockByWarehouse() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [inventories, materials, warehouses_list] = await Promise.all([
+      const [inventories, materials, warehouses_list, units] = await Promise.all([
         inventoryService.getAllInventories(),
         materialService.getAllMaterials(),
         warehouseService.getAllWarehouses(),
+        unitService.getAllUnits(),
+      ]);
+
+      const [importReceipts, exportReceipts] = await Promise.all([
+        importService.getAllImportReceipts(),
+        exportService.getAllExportReceipts(),
       ]);
 
       setWarehouses(warehouses_list);
 
+      const movementStats = new Map<
+        string,
+        {
+          lastImportDate?: string;
+          lastExportDate?: string;
+          exportCount: number;
+        }
+      >();
+
+      const updateLatestDate = (
+        currentDate: string | undefined,
+        incomingDate: string | undefined,
+      ) => {
+        if (!incomingDate) return currentDate;
+        if (!currentDate) return incomingDate;
+
+        return getDateTimestamp(incomingDate) >= getDateTimestamp(currentDate)
+          ? incomingDate
+          : currentDate;
+      };
+
+      (importReceipts || []).forEach((receipt: any) => {
+        if (!isApprovedReceipt(receipt?.status)) return;
+
+        const warehouseId = Number(receipt?.warehouseId || receipt?.warehouse?.id || 0);
+        if (!warehouseId) return;
+
+        const receiptDate = receipt?.importTime || receipt?.createdAt;
+        const details = receipt?.importReceiptDetails || [];
+
+        details.forEach((detail: any) => {
+          const materialId = Number(detail?.materialId || detail?.material?.id || 0);
+          if (!materialId) return;
+
+          const key = `${warehouseId}-${materialId}`;
+          const existing = movementStats.get(key) || { exportCount: 0 };
+
+          movementStats.set(key, {
+            ...existing,
+            lastImportDate: updateLatestDate(existing.lastImportDate, receiptDate),
+          });
+        });
+      });
+
+      (exportReceipts || []).forEach((receipt: any) => {
+        if (!isApprovedReceipt(receipt?.status)) return;
+
+        const warehouseId = Number(receipt?.warehouseId || receipt?.warehouse?.id || 0);
+        if (!warehouseId) return;
+
+        const receiptDate = receipt?.exportDate || receipt?.createdAt;
+        const details =
+          receipt?.exportReceiptDetails ||
+          receipt?.exportReceiptDetail ||
+          receipt?.details ||
+          [];
+
+        details.forEach((detail: any) => {
+          const materialId = Number(detail?.materialId || detail?.material?.id || 0);
+          if (!materialId) return;
+
+          const key = `${warehouseId}-${materialId}`;
+          const existing = movementStats.get(key) || { exportCount: 0 };
+
+          movementStats.set(key, {
+            ...existing,
+            lastExportDate: updateLatestDate(existing.lastExportDate, receiptDate),
+            exportCount: Number(existing.exportCount || 0) + 1,
+          });
+        });
+      });
+
       // Combine inventory data with material and warehouse info
       const combined: StockItem[] = (inventories || []).map((inv) => {
-        const material = materials.find((m) => m.id === inv.materialId);
+        const material = materials.find(
+          (m: any) => Number(m.id) === Number(inv.materialId),
+        );
         const warehouse = warehouses_list.find((w) => w.id === inv.warehouseId);
+        const key = `${inv.warehouseId}-${inv.materialId}`;
+        const movement = movementStats.get(key);
+        const resolvedUnitName =
+          material?.unitName ||
+          (material as any)?.unit?.name ||
+          units.find((u) => Number(u.id) === Number((material as any)?.unitId))?.name ||
+          "-";
 
         return {
           id: inv.id,
@@ -87,9 +200,12 @@ export default function StockByWarehouse() {
           materialCode: material?.code || "N/A",
           materialName: material?.name || "Không xác định",
           quantity: inv.quantity,
-          unitName: material?.unitName || "N/A",
+          unitName: resolvedUnitName,
           categoryName: material?.categoryName || "N/A",
           updatedDate: inv.updatedDate,
+          lastImportDate: movement?.lastImportDate,
+          lastExportDate: movement?.lastExportDate,
+          exportCount: Number(movement?.exportCount || 0),
         };
       });
 
@@ -147,6 +263,7 @@ export default function StockByWarehouse() {
     const warehouseCount = new Set(stockItems.map((item) => item.warehouseId)).size;
     const lowStockCount = stockItems.filter((item) => item.quantity > 0 && item.quantity <= 10).length;
     const outOfStockCount = stockItems.filter((item) => item.quantity <= 0).length;
+    const totalExportCount = stockItems.reduce((sum, item) => sum + Number(item.exportCount || 0), 0);
 
     return {
       totalItems: stockItems.length,
@@ -154,6 +271,7 @@ export default function StockByWarehouse() {
       warehouseCount,
       lowStockCount,
       outOfStockCount,
+      totalExportCount,
     };
   }, [stockItems]);
 
@@ -186,15 +304,10 @@ export default function StockByWarehouse() {
     return "Ổn định";
   };
 
-  const visiblePages = Array.from({ length: totalPages }, (_, i) => i + 1).slice(
-    Math.max(0, currentPage - 3),
-    Math.max(0, currentPage - 3) + 5
-  );
-
   return (
     <>
-      <PageMeta title="Tồn Kho Theo Kho" description="Xem tồn kho của các nguyên liệu theo kho" />
-      <PageBreadcrumb pageTitle="Tồn Kho Theo Kho" />
+      <PageMeta title="Quản lý tồn kho" description="Quản lý tồn kho của các nguyên liệu theo kho" />
+      <PageBreadcrumb pageTitle="Quản lý tồn kho" />
 
       {loading ? (
         <div className="flex justify-center items-center min-h-screen">
@@ -205,7 +318,7 @@ export default function StockByWarehouse() {
         </div>
       ) : (
         <div className="form-tone-sync space-y-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
             <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4 dark:border-sky-500/30 dark:from-sky-500/10 dark:to-gray-900">
               <p className="text-xs font-medium text-sky-700 dark:text-sky-300">Dòng tồn kho</p>
               <p className="mt-2 text-2xl font-semibold text-sky-900 dark:text-sky-200">{summaryStats.totalItems}</p>
@@ -225,6 +338,10 @@ export default function StockByWarehouse() {
             <div className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-white p-4 dark:border-rose-500/30 dark:from-rose-500/10 dark:to-gray-900">
               <p className="text-xs font-medium text-rose-700 dark:text-rose-300">Đã hết hàng</p>
               <p className="mt-2 text-2xl font-semibold text-rose-900 dark:text-rose-200">{summaryStats.outOfStockCount}</p>
+            </div>
+            <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-4 dark:border-violet-500/30 dark:from-violet-500/10 dark:to-gray-900">
+              <p className="text-xs font-medium text-violet-700 dark:text-violet-300">Tổng lượt xuất</p>
+              <p className="mt-2 text-2xl font-semibold text-violet-900 dark:text-violet-200">{summaryStats.totalExportCount.toLocaleString("vi-VN")}</p>
             </div>
           </div>
 
@@ -273,47 +390,65 @@ export default function StockByWarehouse() {
             </div>
 
             <div className="mx-6 mb-6 overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
-              <table className="w-full min-w-[1040px] text-left text-sm">
+              <table className="w-full min-w-[1540px] text-left text-sm">
                 <thead className="border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/60">
                   <tr>
-                    <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Kho</th>
-                    <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Mã nguyên liệu</th>
-                    <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Tên nguyên liệu</th>
-                    <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Phân loại</th>
-                    <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Số lượng</th>
-                    <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Trạng thái tồn</th>
-                    <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Đơn vị</th>
-                    <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Cập nhật lúc</th>
-                    <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Tác vụ</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Kho</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Mã nguyên liệu</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Tên nguyên liệu</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Phân loại</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Số lượng</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Trạng thái tồn</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Ngày nhập gần nhất</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Ngày xuất gần nhất</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Số lần xuất</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Đơn vị</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Cập nhật lúc</th>
+                    <th className="whitespace-nowrap px-4 py-3 text-center font-medium text-gray-600 dark:text-gray-300">Tác vụ</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedItems.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-10 text-center text-gray-500 dark:text-gray-400">
+                      <td colSpan={12} className="px-4 py-10 text-center text-gray-500 dark:text-gray-400">
                         Không có dữ liệu tồn kho
                       </td>
                     </tr>
                   ) : (
                     paginatedItems.map((item) => (
                       <tr key={`${item.warehouseId}-${item.materialId}`} className="transition-colors odd:bg-white even:bg-gray-50/60 hover:bg-blue-50/60 dark:odd:bg-transparent dark:even:bg-gray-800/20 dark:hover:bg-blue-900/20">
-                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{item.warehouseName}</td>
-                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100">{item.materialCode}</td>
-                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100">{item.materialName}</td>
+                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
+                          <div className="max-w-[160px] truncate" title={item.warehouseName}>
+                            {item.warehouseName}
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-gray-900 dark:text-gray-100">{item.materialCode}</td>
+                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100">
+                          <div className="max-w-[180px] truncate" title={item.materialName}>
+                            {item.materialName}
+                          </div>
+                        </td>
                         <td className="px-4 py-3">
-                          <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                          <span className="inline-flex max-w-[150px] truncate rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" title={item.categoryName}>
                             {item.categoryName}
                           </span>
                         </td>
-                        <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{item.quantity.toLocaleString("vi-VN")}</td>
+                        <td className="whitespace-nowrap px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{item.quantity.toLocaleString("vi-VN")}</td>
                         <td className="px-4 py-3">
                           <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${getStockBadgeClass(item.quantity)}`}>
                             {getStockLabel(item.quantity)}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{item.unitName}</td>
-                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(item.updatedDate)}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(item.lastImportDate)}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(item.lastExportDate)}</td>
                         <td className="px-4 py-3">
+                          <span className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                            {Number(item.exportCount || 0).toLocaleString("vi-VN")}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">{item.unitName}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(item.updatedDate)}</td>
+                        <td className="px-4 py-3 text-center">
                           <ActionDropdown onView={() => handleViewDetail(item)} />
                         </td>
                       </tr>
@@ -323,45 +458,15 @@ export default function StockByWarehouse() {
               </table>
             </div>
 
-            <div className="flex flex-col gap-3 border-t border-gray-200 p-4 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between lg:p-6">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Hiển thị {paginatedItems.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0} - {Math.min(currentPage * itemsPerPage, filteredItems.length)} trên {filteredItems.length} kết quả
-              </p>
-
-              {totalPages > 1 && (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                    disabled={currentPage === 1}
-                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-                  >
-                    Trước
-                  </button>
-
-                  {visiblePages.map((page) => (
-                    <button
-                      key={page}
-                      onClick={() => setCurrentPage(page)}
-                      className={`rounded-lg px-3 py-2 text-sm font-medium ${
-                        currentPage === page
-                          ? "bg-blue-600 text-white"
-                          : "border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  ))}
-
-                  <button
-                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                    disabled={currentPage === totalPages}
-                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-                  >
-                    Sau
-                  </button>
-                </div>
-              )}
-            </div>
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={filteredItems.length}
+              startItem={paginatedItems.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}
+              endItem={currentPage * itemsPerPage}
+              onPageChange={setCurrentPage}
+              labelPrefix="Hien thi"
+            />
           </div>
         </div>
       )}
@@ -434,6 +539,27 @@ export default function StockByWarehouse() {
                     ? new Date(selectedItem.updatedDate).toLocaleString("vi-VN")
                     : "N/A"}
                 </p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                  Ngày Nhập Gần Nhất
+                </label>
+                <p className="text-black dark:text-white">{formatDateTime(selectedItem.lastImportDate)}</p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                  Ngày Xuất Gần Nhất
+                </label>
+                <p className="text-black dark:text-white">{formatDateTime(selectedItem.lastExportDate)}</p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                  Số Lần Xuất
+                </label>
+                <p className="text-black dark:text-white">{Number(selectedItem.exportCount || 0).toLocaleString("vi-VN")}</p>
               </div>
             </div>
 

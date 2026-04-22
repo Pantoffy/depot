@@ -1,13 +1,15 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
+import Pagination from "../../components/common/Pagination";
 import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
 import { materialService, Material } from "../../services/materialService";
 import { categoryService, Category, suggestCategory, DEFAULT_CATEGORIES } from "../../services/categoryService";
 import { unitService, Unit, suggestUnit, DEFAULT_UNITS } from "../../services/unitService";
-import { inventoryService, InventoryItem } from "../../services/inventoryService";
+import { buildInventoryQuantityMap, inventoryService, InventoryItem } from "../../services/inventoryService";
+import { supplierService, Supplier } from "../../services/supplierService";
 
 // Dropdown Action Component
 const ActionDropdown = ({ 
@@ -54,6 +56,22 @@ const ActionDropdown = ({
 };
 
 export default function Materials() {
+  const normalizeStatus = (status?: string) => {
+    const value = (status || "").trim().toLowerCase();
+
+    if (value === "đang kinh doanh" || value === "đang hoạt động") {
+      return "Đang hoạt động";
+    }
+
+    if (value === "ngừng kinh doanh" || value === "ngừng hoạt động") {
+      return "Ngừng hoạt động";
+    }
+
+    return status || "Ngừng hoạt động";
+  };
+
+  const isActiveStatus = (status?: string) => normalizeStatus(status) === "Đang hoạt động";
+
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"list" | "create" | "edit" | "detail">("list");
@@ -72,7 +90,15 @@ export default function Materials() {
 
   // Unit states
   const [units, setUnits] = useState<Unit[]>(DEFAULT_UNITS);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [supplierQuery, setSupplierQuery] = useState("");
+  const [isSupplierDropdownOpen, setIsSupplierDropdownOpen] = useState(false);
+  const [isSupplierTyping, setIsSupplierTyping] = useState(false);
   const [inventories, setInventories] = useState<InventoryItem[]>([]);
+  const inventoryQuantityByMaterial = useMemo(
+    () => buildInventoryQuantityMap(inventories),
+    [inventories],
+  );
 
   const [formData, setFormData] = useState({
     code: "",
@@ -84,11 +110,39 @@ export default function Materials() {
     status: "",
   });
 
+  const getSupplierLabel = useCallback((supplier: Supplier) => {
+    return supplier.name || supplier.code || `NCC #${supplier.id}`;
+  }, []);
+
+  const selectedSupplier = useMemo(
+    () => suppliers.find((s) => Number(s.id) === Number(formData.supplierId)),
+    [suppliers, formData.supplierId],
+  );
+
+  const filteredSuppliers = useMemo(() => {
+    const query = supplierQuery.trim().toLowerCase();
+    if (!query) return suppliers;
+
+    return suppliers.filter((supplier) => {
+      const label = getSupplierLabel(supplier).toLowerCase();
+      const code = (supplier.code || "").toLowerCase();
+      return label.includes(query) || code.includes(query);
+    });
+  }, [suppliers, supplierQuery, getSupplierLabel]);
+
+  useEffect(() => {
+    if (isSupplierTyping) return;
+    if (selectedSupplier) {
+      setSupplierQuery(getSupplierLabel(selectedSupplier));
+    }
+  }, [selectedSupplier, isSupplierTyping, getSupplierLabel]);
+
   // Fetch materials and categories on mount
   useEffect(() => {
     fetchMaterials();
     fetchCategories();
     fetchUnits();
+    fetchSuppliers();
     fetchInventories();
   }, []);
 
@@ -111,6 +165,28 @@ export default function Materials() {
       }
     } catch (error) {
       console.warn("Không thể tải đơn vị từ API, sử dụng danh sách mặc định.", error);
+    }
+  };
+
+  const fetchSuppliers = async () => {
+    try {
+      const data = await supplierService.getAllSuppliers();
+      const supplierList = data || [];
+      setSuppliers(supplierList);
+
+      if (supplierList.length > 0) {
+        const firstSupplierId = Number(supplierList[0].id || 0);
+        setFormData((prev) => ({
+          ...prev,
+          supplierId: prev.supplierId || firstSupplierId,
+        }));
+        if (!selectedSupplier) {
+          setSupplierQuery(getSupplierLabel(supplierList[0]));
+        }
+      }
+    } catch (error) {
+      console.warn("Không thể tải nhà cung cấp từ API.", error);
+      setSuppliers([]);
     }
   };
 
@@ -145,15 +221,23 @@ export default function Materials() {
 
   // Reset form
   const resetForm = () => {
+    const defaultSupplierId = Number(suppliers[0]?.id || 1);
     setFormData({
       code: "",
       name: "",
       categoryId: 1,
       unitId: 1,
-      supplierId: 1,
+      supplierId: defaultSupplierId,
       note: "",
-      status: "Đang kinh doanh",
+      status: "Đang hoạt động",
     });
+    if (suppliers[0]) {
+      setSupplierQuery(getSupplierLabel(suppliers[0]));
+    } else {
+      setSupplierQuery("");
+    }
+    setIsSupplierTyping(false);
+    setIsSupplierDropdownOpen(false);
   };
 
   // Handle form change
@@ -161,9 +245,12 @@ export default function Materials() {
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
+    const numericFields = ["categoryId", "unitId", "supplierId"];
     setFormData((prev) => ({
       ...prev,
-      [name]: ["categoryId", "unitId", "supplierId"].includes(name) ? parseInt(value) : value,
+      [name]: numericFields.includes(name)
+        ? (value === "" ? 0 : parseInt(value, 10))
+        : value,
     }));
 
     // Auto-fill category and unit when material name changes
@@ -186,7 +273,7 @@ export default function Materials() {
 
   // Auto-fill unit based on material name keywords
   const handleAutoFillUnit = useCallback((materialName: string) => {
-    const suggestion = suggestUnit(materialName);
+    const suggestion = suggestUnit(materialName, units);
     if (suggestion) {
       setFormData((prev) => ({
         ...prev,
@@ -202,6 +289,11 @@ export default function Materials() {
       return;
     }
 
+    if (!formData.supplierId || formData.supplierId <= 0) {
+      showToast("Vui lòng chọn nhà cung cấp hợp lệ!", "warning");
+      return;
+    }
+
     try {
       if (view === "create") {
         await materialService.createMaterial({
@@ -210,7 +302,6 @@ export default function Materials() {
           categoryId: formData.categoryId,
           unitId: formData.unitId,
           supplierId: formData.supplierId,
-          stockQuantity: 0,
           note: formData.note,
           status: formData.status,
         } as any);
@@ -222,7 +313,6 @@ export default function Materials() {
           categoryId: formData.categoryId,
           unitId: formData.unitId,
           supplierId: formData.supplierId,
-          stockQuantity: selectedMaterial.stockQuantity || 0,
           note: formData.note,
           status: formData.status,
         } as any);
@@ -267,9 +357,17 @@ export default function Materials() {
       unitId: material.unitId,
       supplierId: material.supplierId,
       note: material.note || "",
-      status: material.status || "Hoạt động",
+      status: normalizeStatus(material.status),
     });
     setView("edit");
+    const editSupplier = suppliers.find(
+      (s) => Number(s.id) === Number(material.supplierId),
+    );
+    if (editSupplier) {
+      setSupplierQuery(getSupplierLabel(editSupplier));
+    }
+    setIsSupplierTyping(false);
+    setIsSupplierDropdownOpen(false);
   };
 
   // View detail
@@ -299,7 +397,7 @@ export default function Materials() {
       : material.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
         material.name.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const statusMatch = filters.status.length === 0 || filters.status.includes(material.status || "");
+    const statusMatch = filters.status.length === 0 || filters.status.includes(normalizeStatus(material.status));
     return searchMatch && statusMatch;
   });
 
@@ -308,9 +406,9 @@ export default function Materials() {
   const paginatedMaterials = filteredMaterials.slice(startIndex, startIndex + itemsPerPage);
   const summaryStats = {
     totalMaterials: materials.length,
-    activeMaterials: materials.filter((m) => m.status === "Đang kinh doanh").length,
-    inactiveMaterials: materials.filter((m) => m.status !== "Đang kinh doanh").length,
-    totalStock: materials.reduce((sum, m) => sum + Number(m.stockQuantity || 0), 0),
+    activeMaterials: materials.filter((m) => isActiveStatus(m.status)).length,
+    inactiveMaterials: materials.filter((m) => !isActiveStatus(m.status)).length,
+    totalStock: Object.values(inventoryQuantityByMaterial).reduce<number>((sum, quantity) => sum + Number(quantity || 0), 0),
   };
 
   const formatDate = (dateStr: string | undefined) => {
@@ -337,6 +435,11 @@ export default function Materials() {
     return uniqueNames.length > 0 ? uniqueNames.join(", ") : "-";
   };
 
+  const getMaterialStockQuantity = (materialId?: number) => {
+    if (!materialId) return 0;
+    return inventoryQuantityByMaterial[materialId] || 0;
+  };
+
   // Xuất danh sách nguyên liệu ra file Excel (CSV)
   const exportToExcel = () => {
     const dataToExport = filteredMaterials.length > 0 ? filteredMaterials : materials;
@@ -361,7 +464,7 @@ export default function Materials() {
       escapeCSV(m.categoryName || ""),
       escapeCSV(getUnitName(m)),
       escapeCSV(getWarehouseNames(m.id)),
-      m.stockQuantity ?? 0,
+      getMaterialStockQuantity(m.id),
       escapeCSV(m.status || ""),
       escapeCSV(m.note || ""),
       formatDate(m.createdTime),
@@ -392,11 +495,11 @@ export default function Materials() {
             <p className="mt-2 text-2xl font-semibold text-sky-900 dark:text-sky-200">{summaryStats.totalMaterials}</p>
           </div>
           <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 dark:border-emerald-500/30 dark:from-emerald-500/10 dark:to-gray-900">
-            <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Đang kinh doanh</p>
+            <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Đang hoạt động</p>
             <p className="mt-2 text-2xl font-semibold text-emerald-900 dark:text-emerald-200">{summaryStats.activeMaterials}</p>
           </div>
           <div className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-white p-4 dark:border-rose-500/30 dark:from-rose-500/10 dark:to-gray-900">
-            <p className="text-xs font-medium text-rose-700 dark:text-rose-300">Ngừng kinh doanh</p>
+            <p className="text-xs font-medium text-rose-700 dark:text-rose-300">Ngừng hoạt động</p>
             <p className="mt-2 text-2xl font-semibold text-rose-900 dark:text-rose-200">{summaryStats.inactiveMaterials}</p>
           </div>
           <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-4 dark:border-indigo-500/30 dark:from-indigo-500/10 dark:to-gray-900">
@@ -486,7 +589,7 @@ export default function Materials() {
                             Trạng Thái
                           </label>
                           <div className="space-y-1">
-                            {["Đang kinh doanh", "Ngừng kinh doanh"].map((status) => (
+                            {["Đang hoạt động", "Ngừng hoạt động"].map((status) => (
                               <label key={status} className="flex items-center gap-2 p-1 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer">
                                 <input
                                   type="checkbox"
@@ -581,7 +684,7 @@ export default function Materials() {
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-gray-900 dark:text-white">
-                            {material.stockQuantity} {getUnitName(material)}
+                              {getMaterialStockQuantity(material.id)} {getUnitName(material)}
                           </span>
                         </div>
                       </td>
@@ -592,11 +695,11 @@ export default function Materials() {
                       </td>
                       <td className="px-5 py-4">
                         <span className={`inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-medium ${
-                          material.status === "Đang kinh doanh"
+                          isActiveStatus(material.status)
                             ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
                             : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
                         }`}>
-                          {material.status}
+                          {normalizeStatus(material.status)}
                         </span>
                       </td>
                       <td className="px-5 py-4">
@@ -635,80 +738,14 @@ export default function Materials() {
 
               {/* Pagination */}
               {filteredMaterials.length > 0 && (
-                <div className="px-5 lg:px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Đang hiển thị <span className="font-medium text-gray-900 dark:text-white">{startIndex + 1}</span> -  <span className="font-medium text-gray-900 dark:text-white">{Math.min(startIndex + itemsPerPage, filteredMaterials.length)}</span> trên <span className="font-medium text-gray-900 dark:text-white">{filteredMaterials.length}</span>
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <button 
-                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                      disabled={currentPage === 1}
-                      className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-                      </svg>
-                    </button>
-                    {(() => {
-                      const pages = [];
-                      const maxVisible = 5;
-                      let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
-                      let endPage = Math.min(totalPages, startPage + maxVisible - 1);
-                      if (endPage - startPage + 1 < maxVisible) {
-                        startPage = Math.max(1, endPage - maxVisible + 1);
-                      }
-
-                      // Always show first page
-                      pages.push(1);
-                      if (startPage > 2) {
-                        pages.push('...');
-                      }
-                      // Show middle pages
-                      for (let i = Math.max(2, startPage); i <= Math.min(totalPages - 1, endPage); i++) {
-                        if (!pages.includes(i)) {
-                          pages.push(i);
-                        }
-                      }
-                      // Show ellipsis before last page if needed
-                      if (endPage < totalPages - 1) {
-                        pages.push('...');
-                      }
-                      // Always show last page if there's more than one page
-                      if (totalPages > 1 && !pages.includes(totalPages)) {
-                        pages.push(totalPages);
-                      }
-
-                      return pages.map((page, idx) => (
-                        page === '...' ? (
-                          <span key={`ellipsis-${idx}`} className="text-gray-500 dark:text-gray-400">
-                            ...
-                          </span>
-                        ) : (
-                          <button
-                            key={page}
-                            onClick={() => setCurrentPage(page as number)}
-                            className={`w-9 h-9 rounded-lg text-sm font-medium transition-all duration-200 ${
-                              currentPage === page
-                                ? "bg-blue-600 text-white shadow-sm"
-                                : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                            }`}
-                          >
-                            {page}
-                          </button>
-                        )
-                      ));
-                    })()}
-                    <button
-                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                      disabled={currentPage === totalPages}
-                      className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  totalItems={filteredMaterials.length}
+                  startItem={startIndex + 1}
+                  endItem={startIndex + itemsPerPage}
+                  onPageChange={setCurrentPage}
+                />
               )}
             </div>
           )}
@@ -819,14 +856,94 @@ export default function Materials() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Nhà Cung Cấp
                 </label>
-                <input
-                  type="number"
-                  name="supplierId"
-                  value={formData.supplierId}
-                  onChange={handleFormChange}
-                  className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                  placeholder="1"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={supplierQuery}
+                    onFocus={() => setIsSupplierDropdownOpen(true)}
+                    onChange={(e) => {
+                      setSupplierQuery(e.target.value);
+                      setIsSupplierTyping(true);
+                      setIsSupplierDropdownOpen(true);
+                      setFormData((prev) => ({ ...prev, supplierId: 0 }));
+                    }}
+                    onBlur={() => {
+                      window.setTimeout(() => {
+                        setIsSupplierDropdownOpen(false);
+                        if (selectedSupplier) {
+                          setSupplierQuery(getSupplierLabel(selectedSupplier));
+                        }
+                        setIsSupplierTyping(false);
+                      }, 120);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && filteredSuppliers.length > 0) {
+                        e.preventDefault();
+                        const supplier = filteredSuppliers[0];
+                        setFormData((prev) => ({
+                          ...prev,
+                          supplierId: Number(supplier.id || 0),
+                        }));
+                        setSupplierQuery(getSupplierLabel(supplier));
+                        setIsSupplierDropdownOpen(false);
+                        setIsSupplierTyping(false);
+                      }
+                    }}
+                    className="w-full px-3 py-2.5 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    placeholder="Nhập tên hoặc mã nhà cung cấp"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsSupplierDropdownOpen((prev) => !prev)}
+                    className="absolute inset-y-0 right-0 inline-flex items-center px-3 text-gray-500 dark:text-gray-400"
+                    tabIndex={-1}
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {isSupplierDropdownOpen && (
+                    <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+                      <ul className="max-h-52 overflow-y-auto py-1">
+                        {filteredSuppliers.length === 0 ? (
+                          <li className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
+                            Không tìm thấy nhà cung cấp
+                          </li>
+                        ) : (
+                          filteredSuppliers.map((supplier) => {
+                            const isSelected = Number(supplier.id) === Number(formData.supplierId);
+                            return (
+                              <li key={supplier.id}>
+                                <button
+                                  type="button"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => {
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      supplierId: Number(supplier.id || 0),
+                                    }));
+                                    setSupplierQuery(getSupplierLabel(supplier));
+                                    setIsSupplierDropdownOpen(false);
+                                    setIsSupplierTyping(false);
+                                  }}
+                                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                                    isSelected
+                                      ? "bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300"
+                                      : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+                                  }`}
+                                >
+                                  <span className="truncate">{getSupplierLabel(supplier)}</span>
+                                  <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">{supplier.code}</span>
+                                </button>
+                              </li>
+                            );
+                          })
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div>
@@ -839,8 +956,8 @@ export default function Materials() {
                   onChange={handleFormChange}
                   className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                 >
-                  <option>Đang kinh doanh</option>
-                  <option>Ngừng kinh doanh</option>
+                  <option>Đang hoạt động</option>
+                  <option>Ngừng hoạt động</option>
                 </select>
               </div>
 
@@ -887,7 +1004,7 @@ export default function Materials() {
       )}
 
       {view === "detail" && selectedMaterial && (() => {
-        const isActive = selectedMaterial.status === "Đang kinh doanh";
+        const isActive = isActiveStatus(selectedMaterial.status);
         const warehouseNames = getWarehouseNames(selectedMaterial.id);
         const warehouseCount = warehouseNames === "-" ? 0 : warehouseNames.split(",").length;
 
@@ -918,7 +1035,7 @@ export default function Materials() {
                           : "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300"
                       }`}
                     >
-                      {selectedMaterial.status || "Chưa xác định"}
+                      {normalizeStatus(selectedMaterial.status)}
                     </span>
                     <span className="inline-flex items-center rounded-full bg-white/70 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-gray-800/70 dark:text-gray-300">
                       Đơn vị: {getUnitName(selectedMaterial) || "-"}
@@ -951,7 +1068,7 @@ export default function Materials() {
               <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="rounded-xl border border-sky-200 bg-white/80 p-3 dark:border-sky-500/30 dark:bg-sky-500/10">
                   <p className="text-xs font-medium text-sky-700 dark:text-sky-300">Số lượng tồn</p>
-                  <p className="mt-1 text-lg font-semibold text-sky-900 dark:text-sky-100">{Number(selectedMaterial.stockQuantity || 0).toLocaleString("vi-VN")}</p>
+                  <p className="mt-1 text-lg font-semibold text-sky-900 dark:text-sky-100">{getMaterialStockQuantity(selectedMaterial.id).toLocaleString("vi-VN")}</p>
                 </div>
                 <div className="rounded-xl border border-violet-200 bg-white/80 p-3 dark:border-violet-500/30 dark:bg-violet-500/10">
                   <p className="text-xs font-medium text-violet-700 dark:text-violet-300">Số kho lưu trữ</p>

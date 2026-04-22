@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
+import Pagination from "../../components/common/Pagination";
 import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
 import { warehouseService, Warehouse } from "../../services/warehouseService";
@@ -531,76 +532,15 @@ export default function QuanLyKho() {
 
               {/* Pagination */}
               {filteredWarehouses.length > 0 && (
-                <div className="px-5 lg:px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Hiển thị <span className="font-medium text-gray-900 dark:text-white">{startIndex + 1}</span> đến <span className="font-medium text-gray-900 dark:text-white">{Math.min(startIndex + itemsPerPage, filteredWarehouses.length)}</span> của <span className="font-medium text-gray-900 dark:text-white">{filteredWarehouses.length}</span>
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <button 
-                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                      disabled={currentPage === 1}
-                      className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-                      </svg>
-                    </button>
-                    {(() => {
-                      const pages = [];
-                      const maxVisible = 5;
-                      let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
-                      let endPage = Math.min(totalPages, startPage + maxVisible - 1);
-                      if (endPage - startPage + 1 < maxVisible) {
-                        startPage = Math.max(1, endPage - maxVisible + 1);
-                      }
-
-                      pages.push(1);
-                      if (startPage > 2) {
-                        pages.push('...');
-                      }
-                      for (let i = Math.max(2, startPage); i <= Math.min(totalPages - 1, endPage); i++) {
-                        if (!pages.includes(i)) {
-                          pages.push(i);
-                        }
-                      }
-                      if (endPage < totalPages - 1) {
-                        pages.push('...');
-                      }
-                      if (totalPages > 1 && !pages.includes(totalPages)) {
-                        pages.push(totalPages);
-                      }
-
-                      return pages.map((page, idx) => (
-                        page === '...' ? (
-                          <span key={`ellipsis-${idx}`} className="text-gray-500 dark:text-gray-400">
-                            ...
-                          </span>
-                        ) : (
-                          <button
-                            key={page}
-                            onClick={() => setCurrentPage(page as number)}
-                            className={`w-9 h-9 rounded-lg text-sm font-medium transition-all duration-200 ${
-                              currentPage === page
-                                ? "bg-blue-600 text-white shadow-sm"
-                                : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                            }`}
-                          >
-                            {page}
-                          </button>
-                        )
-                      ));
-                    })()}
-                    <button 
-                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                      disabled={currentPage === totalPages}
-                      className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  totalItems={filteredWarehouses.length}
+                  startItem={startIndex + 1}
+                  endItem={startIndex + itemsPerPage}
+                  onPageChange={setCurrentPage}
+                  labelPrefix="Hien thi"
+                />
               )}
             </div>
           )}

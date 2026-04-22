@@ -11,7 +11,6 @@ export interface StockCheckDetail {
     warehouseId?: number;
     handlingProposal?: string;
     recordedCheck?: boolean;
-    reason?: string;
     status?: string;
     stockCheck?: StockCheck;
     material?: {
@@ -33,7 +32,6 @@ export interface StockCheck {
     warehouseId: number;
     startDate?: string;
     endDate?: string;
-    closingDate?: string;
     checkTime?: string;
     createdBy?: string;
     approvedBy?: string;
@@ -46,6 +44,7 @@ export interface StockCheck {
         name: string;
     };
     stockCheckDetails?: StockCheckDetail[];
+    teams?: StockCheckTeam[];
 }
 
 // Interface matching C# StockCheckTeam model
@@ -145,7 +144,7 @@ export const stockService = {
     // GET all stock details by stock check ID
     getStockDetailsByStockCheckId: async (stockCheckId: number): Promise<StockCheckDetail[]> => {
         try {
-            const response = await apiClient.get<StockCheckDetail[]>(`/Details/${stockCheckId}`);
+            const response = await apiClient.get<StockCheckDetail[]>(`/${stockCheckId}/details`);
             return response.data;
         } catch (error) {
             if (axios.isAxiosError(error)) {
@@ -160,7 +159,7 @@ export const stockService = {
         stockDetail: Omit<StockCheckDetail, "id" | "difference">
     ): Promise<StockCheckDetail> => {
         try {
-            const response = await apiClient.post<StockCheckDetail>("/Detail/Add", stockDetail);
+            const response = await apiClient.post<StockCheckDetail>(`/${stockDetail.stockCheckId}/details`, stockDetail);
             return response.data;
         } catch (error) {
             if (axios.isAxiosError(error)) {
@@ -176,7 +175,7 @@ export const stockService = {
         stockDetail: Omit<StockCheckDetail, "id" | "difference">
     ): Promise<StockCheckDetail> => {
         try {
-            const response = await apiClient.put<StockCheckDetail>(`/Detail/${id}`, stockDetail);
+            const response = await apiClient.put<StockCheckDetail>(`/${stockDetail.stockCheckId}/details/${id}`, stockDetail);
             return response.data;
         } catch (error) {
             if (axios.isAxiosError(error)) {
@@ -187,9 +186,9 @@ export const stockService = {
     },
 
     // DELETE stock detail
-    deleteStockDetail: async (id: number): Promise<void> => {
+    deleteStockDetail: async (stockCheckId: number, detailId: number): Promise<void> => {
         try {
-            await apiClient.delete(`/Detail/${id}`);
+            await apiClient.delete(`/${stockCheckId}/details/${detailId}`);
         } catch (error) {
             if (axios.isAxiosError(error)) {
                 console.error("Error deleting stock detail:", error.message);
@@ -201,7 +200,7 @@ export const stockService = {
     // GET stock checks by warehouse ID
     getStockChecksByWarehouseId: async (warehouseId: number): Promise<StockCheck[]> => {
         try {
-            const response = await apiClient.get<StockCheck[]>(`/${warehouseId}`);
+            const response = await apiClient.get<StockCheck[]>(`/Warehouse/${warehouseId}`);
             return response.data;
         } catch (error) {
             if (axios.isAxiosError(error)) {

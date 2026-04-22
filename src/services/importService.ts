@@ -1,5 +1,57 @@
 import axios from "axios";
 
+const extractErrorMessage = (error: unknown, fallback: string) => {
+  if (!axios.isAxiosError(error)) {
+    if (error instanceof Error && error.message) {
+      return error.message;
+    }
+    return fallback;
+  }
+
+  const responseData = error.response?.data as any;
+
+  if (typeof responseData === "string" && responseData.trim()) {
+    return responseData;
+  }
+
+  if (responseData && typeof responseData === "object") {
+    if (typeof responseData.message === "string" && responseData.message.trim()) {
+      return responseData.message;
+    }
+
+    if (typeof responseData.title === "string" && responseData.title.trim()) {
+      return responseData.title;
+    }
+
+    if (typeof responseData.detail === "string" && responseData.detail.trim()) {
+      return responseData.detail;
+    }
+
+    if (responseData.errors && typeof responseData.errors === "object") {
+      const firstErrorField = Object.keys(responseData.errors)[0];
+      const firstErrorMessages = responseData.errors[firstErrorField];
+      if (Array.isArray(firstErrorMessages) && firstErrorMessages.length > 0) {
+        return String(firstErrorMessages[0]);
+      }
+    }
+  }
+
+  if (error.response?.status) {
+    return `${fallback} (HTTP ${error.response.status})`;
+  }
+
+  if (error.message) {
+    return error.message;
+  }
+
+  return fallback;
+};
+
+export const getImportApiErrorMessage = (
+  error: unknown,
+  fallback = "Lỗi xử lý phiếu nhập",
+) => extractErrorMessage(error, fallback);
+
 // Interface matching C# ImportReceipt model
 export interface ImportReceipt {
   id?: number;
@@ -67,14 +119,9 @@ export const importService = {
       const response = await apiClient.get<ImportReceipt[]>("/List");
       return response.data;
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        if (error.response) {
-          console.error("API Error:", error.response.status, error.response.data);
-        } else if (error.request) {
-          console.error("Network Error: Cannot connect to server (CORS/SSL)");
-        }
-      }
-      throw error;
+      const message = extractErrorMessage(error, "Lỗi tải danh sách phiếu nhập");
+      console.error("Error fetching import receipts:", message);
+      throw new Error(message);
     }
   },
 
@@ -85,10 +132,9 @@ export const importService = {
       const response = await apiClient.get<ImportReceipt>(`/${id}`);
       return response.data;
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        console.error("Error fetching import receipt:", error.message);
-      }
-      throw error;
+      const message = extractErrorMessage(error, "Lỗi tải chi tiết phiếu nhập");
+      console.error("Error fetching import receipt:", message);
+      throw new Error(message);
     }
   },
 
@@ -98,10 +144,11 @@ export const importService = {
       const response = await apiClient.post<ImportReceipt>("/Add", importReceipt);
       return response.  data;
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        console.error("Error creating import receipt:", error.message);
-      }
-      throw error;
+      const message = extractErrorMessage(error, "Lỗi tạo phiếu nhập");
+      console.error("Error creating import receipt:", message, {
+        response: axios.isAxiosError(error) ? error.response?.data : undefined,
+      });
+      throw new Error(message);
     }
   },
 
@@ -111,10 +158,13 @@ export const importService = {
       const response = await apiClient.put<ImportReceipt>(`/${id}`, importReceipt);
       return response.data;
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        console.error("Error updating import receipt:", error.message);
-      }
-      throw error;
+      const message = extractErrorMessage(error, "Lỗi cập nhật phiếu nhập");
+      console.error("Error updating import receipt:", message, {
+        receiptId: id,
+        payload: importReceipt,
+        response: axios.isAxiosError(error) ? error.response?.data : undefined,
+      });
+      throw new Error(message);
     }
   },
 
@@ -123,10 +173,9 @@ export const importService = {
     try {
       await apiClient.delete(`/${id}`);
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        console.error("Error deleting import receipt:", error.message);
-      }
-      throw error;
+      const message = extractErrorMessage(error, "Lỗi xóa phiếu nhập");
+      console.error("Error deleting import receipt:", message);
+      throw new Error(message);
     }
   },
 };

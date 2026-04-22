@@ -1,5 +1,5 @@
 "use client";
-import { importService } from "../../services/importService";
+import { getImportApiErrorMessage, importService } from "../../services/importService";
 import { materialService } from "../../services/materialService";
 import { supplierService } from "../../services/supplierService";
 import { unitService } from "../../services/unitService";
@@ -8,8 +8,18 @@ import { useState, useEffect, useRef } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import CustomSelect from "../../components/common/CustomSelect";
+import Pagination from "../../components/common/Pagination";
 import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
+
+const RECEIPT_STATUS = {
+  DRAFT: "Đang soạn thảo",
+  PENDING: "Chờ xác nhận",
+  APPROVED: "Đã xác nhận",
+  CANCELLED: "Đã hủy",
+} as const;
+
+type ReceiptStatusLabel = (typeof RECEIPT_STATUS)[keyof typeof RECEIPT_STATUS];
 
 // Interface: Hàng hóa trong phiếu nhập
 interface Material {
@@ -124,7 +134,6 @@ export default function NhapKho() {
   const fetchMaterials = async () => {
     try {
       const data = await materialService.getAllMaterials();
-      console.log("Fetched materials:", data); // Debug log to check the structure of fetched materials
       setAvailableMaterials(data || []);
       return data || [];
     } catch (err) {
@@ -154,7 +163,6 @@ export default function NhapKho() {
   const fetchUnits = async () => {
     try {
       const data = await unitService.getAllUnits();
-      console.log("Fetched units:", data);
       setAvailableUnits(data || []);
     } catch (err) {
       console.error("Lỗi tải danh sách đơn vị", err);
@@ -200,7 +208,7 @@ export default function NhapKho() {
         })),
       );
     } catch (err) {
-      showToast("Lỗi tải dữ liệu phiếu nhập", "error");
+      showToast(getImportApiErrorMessage(err, "Lỗi tải dữ liệu phiếu nhập"), "error");
     } finally {
       setLoading(false);
     }
@@ -466,18 +474,18 @@ export default function NhapKho() {
   );
 
   const isReceiptConfirmed = (status: string) => {
-    return normalizeReceiptStatus(status) === "Approved";
+    return normalizeReceiptStatus(status) === RECEIPT_STATUS.APPROVED;
   };
 
   const isReceiptCancelled = (status: string) => {
-    return normalizeReceiptStatus(status) === "Cancelled";
+    return normalizeReceiptStatus(status) === RECEIPT_STATUS.CANCELLED;
   };
 
   const isReceiptDraft = (status: string) => {
-    return normalizeReceiptStatus(status) === "Draft";
+    return normalizeReceiptStatus(status) === RECEIPT_STATUS.DRAFT;
   };
 
-  const normalizeReceiptStatus = (status: string) => {
+  const normalizeReceiptStatus = (status: string): ReceiptStatusLabel => {
     const normalized = (status || "").trim().toLowerCase();
     if (
       normalized === "approved" ||
@@ -485,14 +493,14 @@ export default function NhapKho() {
       normalized === "đã xác nhận" ||
       normalized === "da xac nhan"
     ) {
-      return "Approved";
+      return RECEIPT_STATUS.APPROVED;
     }
     if (
       normalized === "draft" ||
       normalized === "nháp" ||
       normalized === "nhap"
     ) {
-      return "Draft";
+      return RECEIPT_STATUS.DRAFT;
     }
     if (
       normalized === "cancelled" ||
@@ -500,27 +508,24 @@ export default function NhapKho() {
       normalized === "đã hủy" ||
       normalized === "da huy"
     ) {
-      return "Cancelled";
+      return RECEIPT_STATUS.CANCELLED;
     }
-    return "Pending";
+    return RECEIPT_STATUS.PENDING;
   };
 
   const getReceiptStatusLabel = (status: string) => {
-    if (isReceiptConfirmed(status)) return "Đã xác nhận";
-    if (isReceiptDraft(status)) return "Đang soạn thảo";
-    if (isReceiptCancelled(status)) return "Đã hủy";
-    return "Chờ xác nhận";
+    return normalizeReceiptStatus(status);
   };
 
   const getReceiptStatusClass = (status: string) => {
     const normalized = normalizeReceiptStatus(status);
-    if (normalized === "Approved") return "status-confirmed";
-    if (normalized === "Draft") return "status-draft";
-    if (normalized === "Cancelled") return "status-cancelled";
+    if (normalized === RECEIPT_STATUS.APPROVED) return "status-confirmed";
+    if (normalized === RECEIPT_STATUS.DRAFT) return "status-draft";
+    if (normalized === RECEIPT_STATUS.CANCELLED) return "status-cancelled";
     return "status-pending";
   };
 
-  const buildImportReceiptPayload = (receipt: Receipt, status: string) => {
+  const buildImportReceiptPayload = (receipt: Receipt, status: ReceiptStatusLabel) => {
     const totalAmount = receipt.materials.reduce(
       (sum, m) => sum + m.soLuong * m.donGia,
       0,
@@ -548,100 +553,6 @@ export default function NhapKho() {
     };
   };
 
-  const syncMaterialStockForReceipt = async (receipt: Receipt) => {
-    const quantitiesByMaterial = receipt.materials.reduce(
-      (acc, item) => {
-        if (!item.materialId) return acc;
-        acc[item.materialId] =
-          (acc[item.materialId] || 0) + Number(item.soLuong || 0);
-        return acc;
-      },
-      {} as Record<number, number>,
-    );
-
-    const updateJobs = Object.entries(quantitiesByMaterial).map(
-      async ([materialIdText, quantity]) => {
-        const materialId = Number(materialIdText);
-        let material = availableMaterials.find(
-          (m: any) => Number(m.id) === materialId,
-        );
-
-        if (!material) {
-          material = await materialService.getMaterialById(materialId);
-        }
-
-        if (!material) {
-          throw new Error(`Không tìm thấy nguyên liệu ID ${materialId}`);
-        }
-
-        await materialService.updateMaterial(materialId, {
-          code: material.code || "",
-          name: material.name || "",
-          categoryId: material.categoryId || 1,
-          categoryName: material.categoryName || "",
-          unitId: material.unitId || 1,
-          unitName: material.unitName || "",
-          supplierId: material.supplierId || 1,
-          stockQuantity:
-            Number(material.stockQuantity || 0) + Number(quantity || 0),
-          note: material.note || "",
-          status: material.status || "Đang kinh doanh",
-        } as any);
-      },
-    );
-
-    await Promise.all(updateJobs);
-  };
-
-  const syncMaterialStockForCancellation = async (receipt: Receipt) => {
-    const quantitiesByMaterial = receipt.materials.reduce(
-      (acc, item) => {
-        if (!item.materialId) return acc;
-        acc[item.materialId] =
-          (acc[item.materialId] || 0) + Number(item.soLuong || 0);
-        return acc;
-      },
-      {} as Record<number, number>,
-    );
-
-    const updateJobs = Object.entries(quantitiesByMaterial).map(
-      async ([materialIdText, quantity]) => {
-        const materialId = Number(materialIdText);
-        let material = availableMaterials.find(
-          (m: any) => Number(m.id) === materialId,
-        );
-
-        if (!material) {
-          material = await materialService.getMaterialById(materialId);
-        }
-
-        if (!material) {
-          throw new Error(`Không tìm thấy nguyên liệu ID ${materialId}`);
-        }
-
-        const nextStock = Math.max(
-          0,
-          Number(material.stockQuantity || 0) - Number(quantity || 0),
-        );
-
-        await materialService.updateMaterial(materialId, {
-          code: material.code || "",
-          name: material.name || "",
-          categoryId: material.categoryId || 1,
-          categoryName: material.categoryName || "",
-          unitId: material.unitId || 1,
-          unitName: material.unitName || "",
-          supplierId: material.supplierId || 1,
-          stockQuantity: nextStock,
-          note: material.note || "",
-          status: material.status || "Đang kinh doanh",
-        } as any);
-      },
-    );
-
-    await Promise.all(updateJobs);
-  };
-
   const fetchImportReceiptDetail = async (
     receiptId: string | number,
     mats?: any[],
@@ -659,7 +570,7 @@ export default function NhapKho() {
       kho: data.warehouse?.name || "",
       tongTien: data.totalAmount || 0,
       soChungTu: data.documentNo,
-      trangThai: data.status || "Pending",
+      trangThai: data.status || RECEIPT_STATUS.PENDING,
       materials: (data.importReceiptDetails || []).map(
         (detail: any, idx: number) => {
           const mat = materialsList.find(
@@ -732,7 +643,7 @@ export default function NhapKho() {
   };
 
   const handleSaveReceipt = async (
-    targetStatus: "Draft" | "Pending" = "Pending",
+    targetStatus: ReceiptStatusLabel = RECEIPT_STATUS.PENDING,
   ) => {
     if (
       !formData.soPhieu ||
@@ -795,6 +706,10 @@ export default function NhapKho() {
         note: "",
       }));
 
+      const currentReceiptStatus = normalizeReceiptStatus(
+        selectedReceipt?.trangThai || RECEIPT_STATUS.PENDING,
+      );
+
       const receiptData = {
         code: formData.soPhieu,
         receiptNumber: formData.soPhieu,
@@ -804,12 +719,9 @@ export default function NhapKho() {
         status:
           view === "create"
             ? targetStatus
-            : ["Approved", "Cancelled"].includes(
-                  normalizeReceiptStatus(
-                    selectedReceipt?.trangThai || "Pending",
-                  ),
-                )
-              ? normalizeReceiptStatus(selectedReceipt?.trangThai || "Pending")
+            : currentReceiptStatus === RECEIPT_STATUS.APPROVED ||
+                currentReceiptStatus === RECEIPT_STATUS.CANCELLED
+              ? currentReceiptStatus
               : targetStatus,
         createdAt: new Date().toISOString(),
         supplierInvoiceNo: formData.soHoaDonNCC,
@@ -820,7 +732,7 @@ export default function NhapKho() {
 
       if (view === "create") {
         await importService.createImportReceipt(receiptData as any);
-        if (targetStatus === "Draft") {
+        if (targetStatus === RECEIPT_STATUS.DRAFT) {
           showToast("Đã lưu phiếu nhập ở trạng thái đang soạn thảo", "success");
         } else {
           showToast("Tạo phiếu nhập kho thành công", "success");
@@ -832,10 +744,10 @@ export default function NhapKho() {
         );
         if (
           isReceiptDraft(selectedReceipt.trangThai) &&
-          targetStatus === "Pending"
+          targetStatus === RECEIPT_STATUS.PENDING
         ) {
           showToast("Đã gửi phiếu nhập chờ xác nhận", "success");
-        } else if (targetStatus === "Draft") {
+        } else if (targetStatus === RECEIPT_STATUS.DRAFT) {
           showToast("Đã lưu phiếu nhập ở trạng thái đang soạn thảo", "success");
         } else {
           showToast("Cập nhật phiếu nhập kho thành công", "success");
@@ -846,7 +758,7 @@ export default function NhapKho() {
       setView("list");
       fetchImportReceipts();
     } catch (err) {
-      showToast("Lỗi lưu phiếu nhập", "error");
+      showToast(getImportApiErrorMessage(err, "Lỗi lưu phiếu nhập"), "error");
     } finally {
       setLoading(false);
     }
@@ -862,7 +774,7 @@ export default function NhapKho() {
           showToast("Xóa phiếu nhập thành công", "success");
           fetchImportReceipts();
         } catch (err) {
-          showToast("Lỗi xóa phiếu nhập", "error");
+          showToast(getImportApiErrorMessage(err, "Lỗi xóa phiếu nhập"), "error");
         } finally {
           setLoading(false);
         }
@@ -898,13 +810,12 @@ export default function NhapKho() {
           const detailedReceipt = await fetchImportReceiptDetail(receipt.id);
           const payload = buildImportReceiptPayload(
             detailedReceipt,
-            "Approved",
+            RECEIPT_STATUS.APPROVED,
           );
           await importService.updateImportReceipt(
             Number(receipt.id),
             payload as any,
           );
-          await syncMaterialStockForReceipt(detailedReceipt);
           showToast(
             "Xác nhận phiếu thành công, tồn kho đã được cập nhật",
             "success",
@@ -912,10 +823,16 @@ export default function NhapKho() {
           const refreshedMaterials = await fetchMaterials();
           await fetchImportReceipts(refreshedMaterials);
           if (selectedReceipt?.id === receipt.id) {
-            setSelectedReceipt({ ...detailedReceipt, trangThai: "Approved" });
+            setSelectedReceipt({ ...detailedReceipt, trangThai: RECEIPT_STATUS.APPROVED });
           }
         } catch (err) {
-          showToast("Lỗi khi xác nhận phiếu hoặc cập nhật tồn kho", "error");
+          showToast(
+            getImportApiErrorMessage(
+              err,
+              "Lỗi khi xác nhận phiếu hoặc cập nhật tồn kho",
+            ),
+            "error",
+          );
         } finally {
           setLoading(false);
         }
@@ -935,7 +852,7 @@ export default function NhapKho() {
         try {
           setLoading(true);
           const detailedReceipt = await fetchImportReceiptDetail(receipt.id);
-          const payload = buildImportReceiptPayload(detailedReceipt, "Pending");
+          const payload = buildImportReceiptPayload(detailedReceipt, RECEIPT_STATUS.PENDING);
           await importService.updateImportReceipt(
             Number(receipt.id),
             payload as any,
@@ -945,12 +862,12 @@ export default function NhapKho() {
           await fetchImportReceipts(refreshedMaterials);
 
           if (selectedReceipt?.id === receipt.id) {
-            setSelectedReceipt({ ...detailedReceipt, trangThai: "Pending" });
+            setSelectedReceipt({ ...detailedReceipt, trangThai: RECEIPT_STATUS.PENDING });
           }
 
           showToast("Đã gửi phiếu nhập chờ xác nhận", "success");
         } catch (err) {
-          showToast("Lỗi khi gửi phiếu chờ xác nhận", "error");
+          showToast(getImportApiErrorMessage(err, "Lỗi khi gửi phiếu chờ xác nhận"), "error");
         } finally {
           setLoading(false);
         }
@@ -975,7 +892,7 @@ export default function NhapKho() {
           const detailedReceipt = await fetchImportReceiptDetail(receipt.id);
           const payload = buildImportReceiptPayload(
             detailedReceipt,
-            "Cancelled",
+            RECEIPT_STATUS.CANCELLED,
           );
           await importService.updateImportReceipt(
             Number(receipt.id),
@@ -983,19 +900,19 @@ export default function NhapKho() {
           );
 
           if (isReceiptConfirmed(detailedReceipt.trangThai)) {
-            await syncMaterialStockForCancellation(detailedReceipt);
+            // Backend handles inventory rollback; just refresh the receipt list below.
           }
 
           const refreshedMaterials = await fetchMaterials();
           await fetchImportReceipts(refreshedMaterials);
 
           if (selectedReceipt?.id === receipt.id) {
-            setSelectedReceipt({ ...detailedReceipt, trangThai: "Cancelled" });
+            setSelectedReceipt({ ...detailedReceipt, trangThai: RECEIPT_STATUS.CANCELLED });
           }
 
           showToast("Hủy phiếu nhập thành công", "success");
         } catch (err) {
-          showToast("Lỗi khi hủy phiếu nhập", "error");
+          showToast(getImportApiErrorMessage(err, "Lỗi khi hủy phiếu nhập"), "error");
         } finally {
           setLoading(false);
         }
@@ -1007,10 +924,10 @@ export default function NhapKho() {
     new Set(receipts.map((r) => r.kho).filter(Boolean)),
   );
   const statusFilterOptions = [
-    "Đang soạn thảo",
-    "Chờ xác nhận",
-    "Đã xác nhận",
-    "Đã hủy",
+    RECEIPT_STATUS.DRAFT,
+    RECEIPT_STATUS.PENDING,
+    RECEIPT_STATUS.APPROVED,
+    RECEIPT_STATUS.CANCELLED,
   ];
 
   const filteredReceipts = receipts
@@ -1039,10 +956,10 @@ export default function NhapKho() {
   const summaryStats = {
     totalReceipts: receipts.length,
     draftReceipts: receipts.filter(
-      (r) => normalizeReceiptStatus(r.trangThai) === "Draft",
+      (r) => normalizeReceiptStatus(r.trangThai) === RECEIPT_STATUS.DRAFT,
     ).length,
     pendingReceipts: receipts.filter(
-      (r) => normalizeReceiptStatus(r.trangThai) === "Pending",
+      (r) => normalizeReceiptStatus(r.trangThai) === RECEIPT_STATUS.PENDING,
     ).length,
     totalValue: receipts.reduce((sum, r) => sum + (r.tongTien || 0), 0),
   };
@@ -1425,80 +1342,15 @@ export default function NhapKho() {
             </table>
           </div>
 
-          <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Hiển thị {(currentPage - 1) * itemsPerPage + 1} đến{" "}
-              {Math.min(currentPage * itemsPerPage, filteredReceipts.length)}{" "}
-              trong {filteredReceipts.length} phiếu
-            </p>
-            <div className="flex gap-2 items-center">
-              <button
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-                className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                ‹
-              </button>
-              {(() => {
-                const pages = [];
-                const maxVisible = 5;
-                let startPage = Math.max(
-                  1,
-                  currentPage - Math.floor(maxVisible / 2),
-                );
-                let endPage = Math.min(totalPages, startPage + maxVisible - 1);
-                if (endPage - startPage + 1 < maxVisible) {
-                  startPage = Math.max(1, endPage - maxVisible + 1);
-                }
-                pages.push(1);
-                if (startPage > 2) {
-                  pages.push("...");
-                }
-                for (
-                  let i = Math.max(2, startPage);
-                  i <= Math.min(totalPages - 1, endPage);
-                  i++
-                ) {
-                  if (!pages.includes(i)) {
-                    pages.push(i);
-                  }
-                }
-                if (endPage < totalPages - 1) {
-                  pages.push("...");
-                }
-                if (totalPages > 1 && !pages.includes(totalPages)) {
-                  pages.push(totalPages);
-                }
-                return pages.map((page, idx) =>
-                  page === "..." ? (
-                    <span
-                      key={`ellipsis-${idx}`}
-                      className="text-gray-500 dark:text-gray-400"
-                    >
-                      ...
-                    </span>
-                  ) : (
-                    <button
-                      key={page}
-                      onClick={() => setCurrentPage(page as number)}
-                      className={`px-4 py-2 text-sm rounded-lg transition-colors ${page === currentPage ? "bg-blue-600 text-white" : "border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
-                    >
-                      {page}
-                    </button>
-                  ),
-                );
-              })()}
-              <button
-                onClick={() =>
-                  setCurrentPage(Math.min(totalPages, currentPage + 1))
-                }
-                disabled={currentPage === totalPages}
-                className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                ›
-              </button>
-            </div>
-          </div>
+          <Pagination
+            currentPage={currentPage}
+            totalPages={Math.max(totalPages, 1)}
+            totalItems={filteredReceipts.length}
+            startItem={filteredReceipts.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}
+            endItem={currentPage * itemsPerPage}
+            onPageChange={setCurrentPage}
+            labelPrefix="Hien thi"
+          />
         </div>
       </>
     );
@@ -2051,7 +1903,7 @@ export default function NhapKho() {
 
           <div className="flex gap-3">
             <button
-              onClick={() => void handleSaveReceipt("Draft")}
+              onClick={() => void handleSaveReceipt(RECEIPT_STATUS.DRAFT)}
               className="module-primary-btn inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white transition-colors"
             >
               <svg
