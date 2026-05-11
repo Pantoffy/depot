@@ -17,17 +17,29 @@ import Materials from "./pages/Inventory/Materials";
 import Suppliers from "./pages/Inventory/Suppliers";
 import Warehouse from "./pages/Inventory/Warehouse";
 import StockByWarehouse from "./pages/Inventory/StockByWarehouse";
+import StockLedgerReport from "./pages/Inventory/StockLedgerReport";
+import { AuthProvider } from "./context/AuthContext";
+import ProtectedRoute from "./components/auth/ProtectedRoute";
 
 export default function App() {
   return (
-    <>
+    <AuthProvider>
       <Router>
         <ToastContainer />
         <ConfirmDialog />
         <ScrollToTop />
         <Routes>
-          {/* Dashboard Layout */}
-          <Route element={<AppLayout />}>
+          {/* Auth Layout */}
+          <Route path="/signin" element={<SignIn />} />
+
+          {/* Dashboard Layout - Protected Routes */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <AppLayout />
+              </ProtectedRoute>
+            }
+          >
             <Route index path="/" element={<Home />} />
 
             {/* Others Page */}
@@ -48,15 +60,13 @@ export default function App() {
             <Route path="/quan-ly-nha-cung-cap" element={<Suppliers />} />
             <Route path="/quan-ly-kho" element={<Warehouse />} />
             <Route path="/ton-kho-theo-kho" element={<StockByWarehouse />} />
+            <Route path="/bao-cao-xuat-nhap-ton" element={<StockLedgerReport />} />
           </Route>
-
-          {/* Auth Layout */}
-          <Route path="/signin" element={<SignIn />} />
 
           {/* Fallback Route */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Router>
-    </>
+    </AuthProvider>
   );
 }

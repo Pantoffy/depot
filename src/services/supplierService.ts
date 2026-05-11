@@ -1,4 +1,5 @@
 import axios from "axios";
+import { createApiClient } from "./apiClient";
 
 // Interface matching C# Supplier model
 export interface Supplier {
@@ -19,13 +20,7 @@ export interface Supplier {
 
 // Create axios instance with base configuration
 // Sử dụng Vite proxy - request sẽ đi qua localhost:5173/api rồi proxy sang backend
-const apiClient = axios.create({
-  baseURL: "/api/Supplier",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  timeout: 10000,
-});
+const apiClient = createApiClient("/api/Supplier");
 
 export const supplierService = {
   // GET all suppliers

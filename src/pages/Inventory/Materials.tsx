@@ -5,11 +5,19 @@ import PageMeta from "../../components/common/PageMeta";
 import Pagination from "../../components/common/Pagination";
 import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
+import { FormTextarea } from "../../components/form";
 import { materialService, Material } from "../../services/materialService";
-import { categoryService, Category, suggestCategory, DEFAULT_CATEGORIES } from "../../services/categoryService";
+import { categoryService, Category, suggestCategory, DEFAULT_CATEGORIES, getCategoriesByItemType } from "../../services/categoryService";
 import { unitService, Unit, suggestUnit, DEFAULT_UNITS } from "../../services/unitService";
+import {
+  hydrateMaterialsItemType,
+  resolveMaterialItemType,
+  setStoredItemType,
+  type ItemType,
+} from "../../services/itemTypeService";
 import { buildInventoryQuantityMap, inventoryService, InventoryItem } from "../../services/inventoryService";
 import { supplierService, Supplier } from "../../services/supplierService";
+import { useAuth } from "../../context/AuthContext";
 
 // Dropdown Action Component
 const ActionDropdown = ({ 
@@ -56,6 +64,8 @@ const ActionDropdown = ({
 };
 
 export default function Materials() {
+  const { canApprove } = useAuth();
+  
   const normalizeStatus = (status?: string) => {
     const value = (status || "").trim().toLowerCase();
 
@@ -103,9 +113,10 @@ export default function Materials() {
   const [formData, setFormData] = useState({
     code: "",
     name: "",
+    itemType: "material" as ItemType,
     categoryId: 1,
     unitId: 1,
-    supplierId: 1,
+    supplierId: 0,
     note: "",
     status: "",
   });
@@ -117,6 +128,11 @@ export default function Materials() {
   const selectedSupplier = useMemo(
     () => suppliers.find((s) => Number(s.id) === Number(formData.supplierId)),
     [suppliers, formData.supplierId],
+  );
+
+  const filteredCategories = useMemo(
+    () => getCategoriesByItemType(categories, formData.itemType),
+    [categories, formData.itemType],
   );
 
   const filteredSuppliers = useMemo(() => {
@@ -173,17 +189,6 @@ export default function Materials() {
       const data = await supplierService.getAllSuppliers();
       const supplierList = data || [];
       setSuppliers(supplierList);
-
-      if (supplierList.length > 0) {
-        const firstSupplierId = Number(supplierList[0].id || 0);
-        setFormData((prev) => ({
-          ...prev,
-          supplierId: prev.supplierId || firstSupplierId,
-        }));
-        if (!selectedSupplier) {
-          setSupplierQuery(getSupplierLabel(supplierList[0]));
-        }
-      }
     } catch (error) {
       console.warn("Không thể tải nhà cung cấp từ API.", error);
       setSuppliers([]);
@@ -194,7 +199,16 @@ export default function Materials() {
     try {
       setLoading(true);
       const data = await materialService.getAllMaterials();
-      setMaterials(data);
+      // Debug: log raw itemType values returned by backend to help identify filtering/mapping issues
+      try {
+        const rawTypes = (data || []).map((m) => m.itemType || "(empty)");
+        console.debug("[Materials] raw itemType values:", rawTypes);
+        const unique = Array.from(new Set(rawTypes));
+        console.debug("[Materials] unique itemType values:", unique);
+      } catch (e) {
+        console.debug("[Materials] cannot inspect itemType values", e);
+      }
+      setMaterials(hydrateMaterialsItemType(data || []));
     } catch (error: any) {
       let errorMsg = "Unknown error";
       if (error.response) {
@@ -221,21 +235,17 @@ export default function Materials() {
 
   // Reset form
   const resetForm = () => {
-    const defaultSupplierId = Number(suppliers[0]?.id || 1);
     setFormData({
       code: "",
       name: "",
+      itemType: "material",
       categoryId: 1,
       unitId: 1,
-      supplierId: defaultSupplierId,
+      supplierId: 0,
       note: "",
       status: "Đang hoạt động",
     });
-    if (suppliers[0]) {
-      setSupplierQuery(getSupplierLabel(suppliers[0]));
-    } else {
-      setSupplierQuery("");
-    }
+    setSupplierQuery("");
     setIsSupplierTyping(false);
     setIsSupplierDropdownOpen(false);
   };
@@ -246,12 +256,45 @@ export default function Materials() {
   ) => {
     const { name, value } = e.target;
     const numericFields = ["categoryId", "unitId", "supplierId"];
-    setFormData((prev) => ({
-      ...prev,
-      [name]: numericFields.includes(name)
+    setFormData((prev) => {
+      const nextValue = numericFields.includes(name)
         ? (value === "" ? 0 : parseInt(value, 10))
-        : value,
-    }));
+        : value;
+
+      const nextData = {
+        ...prev,
+        [name]: nextValue,
+      };
+
+      if (name === "itemType") {
+        const itemType = value as ItemType;
+        const nextSuggestedUnit = suggestUnit(nextData.name, units, itemType);
+        
+        // Get valid categories for this itemType and set first one as default
+        const validCategories = getCategoriesByItemType(categories, itemType);
+        const defaultCategoryId = validCategories.length > 0 ? validCategories[0].id : 1;
+
+        if (itemType === "asset") {
+          return {
+            ...nextData,
+            categoryId: defaultCategoryId,
+            unitId: nextSuggestedUnit?.unitId || nextData.unitId,
+          };
+        }
+
+        return {
+          ...nextData,
+          categoryId: defaultCategoryId,
+          unitId: nextSuggestedUnit?.unitId || nextData.unitId,
+        };
+      }
+
+      return nextData;
+    });
+
+    if (name === "itemType") {
+      return;
+    }
 
     // Auto-fill category and unit when material name changes
     if (name === "name") {
@@ -271,17 +314,17 @@ export default function Materials() {
     }
   }, []);
 
-  // Auto-fill unit based on material name keywords
+  // Auto-fill unit based on material name keywords and item type
   const handleAutoFillUnit = useCallback((materialName: string) => {
-    const suggestion = suggestUnit(materialName, units);
-    if (suggestion) {
-      setFormData((prev) => ({
+    setFormData((prev) => {
+      const suggestion = suggestUnit(materialName, units, prev.itemType);
+      if (!suggestion) return prev;
+      return {
         ...prev,
         unitId: suggestion.unitId,
-      }));
-    }
-  }, []);
-
+      };
+    });
+  }, [units]);
   // Save material
   const handleSaveMaterial = async () => {
     if (!formData.code || !formData.name) {
@@ -289,33 +332,45 @@ export default function Materials() {
       return;
     }
 
-    if (!formData.supplierId || formData.supplierId <= 0) {
+    if (formData.itemType === "material" && (!formData.supplierId || formData.supplierId <= 0)) {
       showToast("Vui lòng chọn nhà cung cấp hợp lệ!", "warning");
+      return;
+    }
+
+    // Check if user is trying to change status without permission
+    if (view === "edit" && selectedMaterial && selectedMaterial.status !== formData.status && !canApprove()) {
+      showToast("Bạn không có quyền thay đổi trạng thái nguyên liệu", "error");
       return;
     }
 
     try {
       if (view === "create") {
-        await materialService.createMaterial({
+        const createdMaterial = await materialService.createMaterial({
           code: formData.code,
           name: formData.name,
+          itemType: formData.itemType,
           categoryId: formData.categoryId,
           unitId: formData.unitId,
           supplierId: formData.supplierId,
           note: formData.note,
           status: formData.status,
         } as any);
+        if (createdMaterial?.id) {
+          setStoredItemType(createdMaterial.id, formData.itemType);
+        }
         showToast("Nguyên liệu đã được tạo thành công!", "success");
       } else if (view === "edit" && selectedMaterial && selectedMaterial.id) {
         await materialService.updateMaterial(selectedMaterial.id, {
           code: formData.code,
           name: formData.name,
+          itemType: formData.itemType,
           categoryId: formData.categoryId,
           unitId: formData.unitId,
           supplierId: formData.supplierId,
           note: formData.note,
           status: formData.status,
         } as any);
+        setStoredItemType(selectedMaterial.id, formData.itemType);
         showToast("Nguyên liệu đã được cập nhật!", "success");
       }
       fetchMaterials();
@@ -349,10 +404,12 @@ export default function Materials() {
 
   // Edit material
   const handleEditMaterial = (material: Material) => {
+    const resolvedItemType = resolveMaterialItemType(material);
     setSelectedMaterial(material);
     setFormData({
       code: material.code,
       name: material.name,
+      itemType: resolvedItemType,
       categoryId: material.categoryId,
       unitId: material.unitId,
       supplierId: material.supplierId,
@@ -417,6 +474,13 @@ export default function Materials() {
     return date.toLocaleDateString('vi-VN', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
+  const getItemTypeLabel = (material: Material) => {
+    const t = resolveMaterialItemType(material);
+    if (t === "asset") return "Tài sản";
+    if (t === "goods") return "Hàng hóa";
+    return "Nguyên liệu";
+  };
+
   // Lấy tên đơn vị: ưu tiên unitName từ API, fallback tra từ danh sách units
   const getUnitName = (material: Material) => {
     if (material.unitName) return material.unitName;
@@ -448,7 +512,7 @@ export default function Materials() {
       return;
     }
 
-    const headers = ["STT", "Mã", "Tên Nguyên Liệu", "Danh Mục", "Đơn Vị", "Kho", "Tồn Kho", "Trạng Thái", "Ghi Chú", "Ngày Tạo"];
+    const headers = ["STT", "Mã", "Tên", "Loại", "Danh Mục", "Đơn Vị", "Kho", "Tồn Kho", "Trạng Thái", "Ghi Chú", "Ngày Tạo"];
 
     const escapeCSV = (value: string) => {
       if (value.includes(',') || value.includes('"') || value.includes('\n')) {
@@ -461,6 +525,7 @@ export default function Materials() {
       index + 1,
       escapeCSV(m.code || ""),
       escapeCSV(m.name || ""),
+      escapeCSV(getItemTypeLabel(m)),
       escapeCSV(m.categoryName || ""),
       escapeCSV(getUnitName(m)),
       escapeCSV(getWarehouseNames(m.id)),
@@ -482,16 +547,45 @@ export default function Materials() {
     showToast(`Đã xuất ${dataToExport.length} nguyên liệu ra file Excel!`, "success");
   };
 
+  const pageTitle = view === "list" ? "Quản lý vật tư và tài sản" : view === "create" ? "Thêm Vật Tư Mới" : "Chỉnh Sửa Vật Tư";
+  const breadcrumbAction = view === "list" ? (
+    <button
+      onClick={() => {
+        resetForm();
+        setView("create");
+      }}
+      className="inline-flex items-center gap-2 rounded-full bg-cyan-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-cyan-600/20 transition hover:bg-cyan-700"
+    >
+      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+      </svg>
+      Thêm mới
+    </button>
+  ) : (
+    <button
+      onClick={() => {
+        resetForm();
+        setView("list");
+      }}
+      className="module-ghost-btn inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800/70"
+    >
+      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+      </svg>
+      Quay Lại
+    </button>
+  );
+
   return (
     <>
-      <PageMeta title="Quản lý nguyên liệu" description="Quản lý danh sách nguyên liệu" />
-      <PageBreadcrumb pageTitle="Quản lý nguyên liệu" />
+      <PageMeta title={pageTitle} description="Quản lý danh sách nguyên liệu và tài sản" />
+      <PageBreadcrumb pageTitle={pageTitle} action={breadcrumbAction} />
 
       {view === "list" && (
         <>
         <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4 dark:border-sky-500/30 dark:from-sky-500/10 dark:to-gray-900">
-            <p className="text-xs font-medium text-sky-700 dark:text-sky-300">Tổng nguyên liệu</p>
+            <p className="text-xs font-medium text-sky-700 dark:text-sky-300">Tổng vật tư</p>
             <p className="mt-2 text-2xl font-semibold text-sky-900 dark:text-sky-200">{summaryStats.totalMaterials}</p>
           </div>
           <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 dark:border-emerald-500/30 dark:from-emerald-500/10 dark:to-gray-900">
@@ -514,10 +608,10 @@ export default function Materials() {
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Danh sách nguyên liệu
+                  Danh sách vật tư và tài sản
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  Quản lý danh sách các nguyên liệu trong kho
+                  Quản lý danh sách nguyên liệu và tài sản dùng chung bảng Materials
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -529,18 +623,6 @@ export default function Materials() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
                   Xuất Excel
-                </button>
-                <button
-                  onClick={() => {
-                    resetForm();
-                    setView("create");
-                  }}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-all duration-200 shadow-sm"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                  </svg>
-                  Thêm nguyên liệu
                 </button>
               </div>
             </div>
@@ -648,8 +730,9 @@ export default function Materials() {
                         className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-800"
                       />
                     </th>
-                    <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tên Nguyên Liệu</th>
+                    <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tên</th>
                     <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Mã</th>
+                    <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Loại</th>
                     <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tồn Kho</th>
                     <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Danh Mục</th>
                     <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Trạng Thái</th>
@@ -679,6 +762,15 @@ export default function Materials() {
                       <td className="px-5 py-4">
                         <span className="text-sm text-gray-600 dark:text-gray-400">
                           {material.code}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className={`inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-medium ${
+                          resolveMaterialItemType(material) === "asset"
+                            ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
+                            : "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300"
+                        }`}>
+                          {getItemTypeLabel(material)}
                         </span>
                       </td>
                       <td className="px-5 py-4">
@@ -755,28 +847,15 @@ export default function Materials() {
 
       {(view === "create" || view === "edit") && (
         <div className="module-view form-tone-sync space-y-6">
-          <button
-            onClick={() => {
-              resetForm();
-              setView("list");
-            }}
-            className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-            </svg>
-            Quay Lại
-          </button>
-
-          <div className="module-surface rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03] p-5 lg:p-6">
+              <div className="module-surface rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03] p-5 lg:p-6">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">
-              {view === "create" ? "Thêm Nguyên Liệu Mới" : "Chỉnh Sửa Nguyên Liệu"}
+              {view === "create" ? "Thêm Vật Tư Mới" : "Chỉnh Sửa Vật Tư"}
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Mã Nguyên Liệu
+                  Mã Vật Tư
                 </label>
                 <input
                   type="text"
@@ -791,7 +870,7 @@ export default function Materials() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Tên Nguyên Liệu *
+                  Tên Vật Tư *
                 </label>
                 <input
                   type="text"
@@ -799,15 +878,31 @@ export default function Materials() {
                   value={formData.name}
                   onChange={handleFormChange}
                   className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                  placeholder="Nhập tên nguyên liệu"
+                  placeholder="Nhập tên nguyên liệu hoặc tài sản"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Loại vật tư
+                </label>
+                <select
+                  name="itemType"
+                  value={formData.itemType}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                >
+                  <option value="material">Nguyên liệu</option>
+                  <option value="goods">Hàng hóa</option>
+                  <option value="asset">Tài sản</option>
+                </select>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Danh Mục
                 </label>
-                {categories.length > 0 ? (
+                {filteredCategories.length > 0 ? (
                   <select
                     name="categoryId"
                     value={formData.categoryId}
@@ -815,7 +910,7 @@ export default function Materials() {
                     className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   >
                     <option value="" disabled>Chọn danh mục</option>
-                    {categories.map((cat) => (
+                    {filteredCategories.map((cat) => (
                       <option key={cat.id} value={cat.id}>
                         {cat.name}
                       </option>
@@ -850,101 +945,106 @@ export default function Materials() {
                     </option>
                   ))}
                 </select>
+                {formData.itemType === "asset" && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Tài sản sẽ ưu tiên đơn vị đếm như cái, chiếc hoặc bộ.
+                  </p>
+                )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Nhà Cung Cấp
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={supplierQuery}
-                    onFocus={() => setIsSupplierDropdownOpen(true)}
-                    onChange={(e) => {
-                      setSupplierQuery(e.target.value);
-                      setIsSupplierTyping(true);
-                      setIsSupplierDropdownOpen(true);
-                      setFormData((prev) => ({ ...prev, supplierId: 0 }));
-                    }}
-                    onBlur={() => {
-                      window.setTimeout(() => {
-                        setIsSupplierDropdownOpen(false);
-                        if (selectedSupplier) {
-                          setSupplierQuery(getSupplierLabel(selectedSupplier));
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Nhà Cung Cấp
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={supplierQuery}
+                      onFocus={() => setIsSupplierDropdownOpen(true)}
+                      onChange={(e) => {
+                        setSupplierQuery(e.target.value);
+                        setIsSupplierTyping(true);
+                        setIsSupplierDropdownOpen(true);
+                        setFormData((prev) => ({ ...prev, supplierId: 0 }));
+                      }}
+                      onBlur={() => {
+                        window.setTimeout(() => {
+                          setIsSupplierDropdownOpen(false);
+                          if (selectedSupplier) {
+                            setSupplierQuery(getSupplierLabel(selectedSupplier));
+                          }
+                          setIsSupplierTyping(false);
+                        }, 120);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && filteredSuppliers.length > 0) {
+                          e.preventDefault();
+                          const supplier = filteredSuppliers[0];
+                          setFormData((prev) => ({
+                            ...prev,
+                            supplierId: Number(supplier.id || 0),
+                          }));
+                          setSupplierQuery(getSupplierLabel(supplier));
+                          setIsSupplierDropdownOpen(false);
+                          setIsSupplierTyping(false);
                         }
-                        setIsSupplierTyping(false);
-                      }, 120);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && filteredSuppliers.length > 0) {
-                        e.preventDefault();
-                        const supplier = filteredSuppliers[0];
-                        setFormData((prev) => ({
-                          ...prev,
-                          supplierId: Number(supplier.id || 0),
-                        }));
-                        setSupplierQuery(getSupplierLabel(supplier));
-                        setIsSupplierDropdownOpen(false);
-                        setIsSupplierTyping(false);
-                      }
-                    }}
-                    className="w-full px-3 py-2.5 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                    placeholder="Nhập tên hoặc mã nhà cung cấp"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setIsSupplierDropdownOpen((prev) => !prev)}
-                    className="absolute inset-y-0 right-0 inline-flex items-center px-3 text-gray-500 dark:text-gray-400"
-                    tabIndex={-1}
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
+                      }}
+                      className="w-full px-3 py-2.5 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                      placeholder="Nhập tên hoặc mã nhà cung cấp"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsSupplierDropdownOpen((prev) => !prev)}
+                      className="absolute inset-y-0 right-0 inline-flex items-center px-3 text-gray-500 dark:text-gray-400"
+                      tabIndex={-1}
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
 
-                  {isSupplierDropdownOpen && (
-                    <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
-                      <ul className="max-h-52 overflow-y-auto py-1">
-                        {filteredSuppliers.length === 0 ? (
-                          <li className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
-                            Không tìm thấy nhà cung cấp
-                          </li>
-                        ) : (
-                          filteredSuppliers.map((supplier) => {
-                            const isSelected = Number(supplier.id) === Number(formData.supplierId);
-                            return (
-                              <li key={supplier.id}>
-                                <button
-                                  type="button"
-                                  onMouseDown={(e) => e.preventDefault()}
-                                  onClick={() => {
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      supplierId: Number(supplier.id || 0),
-                                    }));
-                                    setSupplierQuery(getSupplierLabel(supplier));
-                                    setIsSupplierDropdownOpen(false);
-                                    setIsSupplierTyping(false);
-                                  }}
-                                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
-                                    isSelected
-                                      ? "bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300"
-                                      : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
-                                  }`}
-                                >
-                                  <span className="truncate">{getSupplierLabel(supplier)}</span>
-                                  <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">{supplier.code}</span>
-                                </button>
-                              </li>
-                            );
-                          })
-                        )}
-                      </ul>
-                    </div>
-                  )}
+                    {isSupplierDropdownOpen && (
+                      <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+                        <ul className="max-h-52 overflow-y-auto py-1">
+                          {filteredSuppliers.length === 0 ? (
+                            <li className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
+                              Không tìm thấy nhà cung cấp
+                            </li>
+                          ) : (
+                            filteredSuppliers.map((supplier) => {
+                              const isSelected = Number(supplier.id) === Number(formData.supplierId);
+                              return (
+                                <li key={supplier.id}>
+                                  <button
+                                    type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => {
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        supplierId: Number(supplier.id || 0),
+                                      }));
+                                      setSupplierQuery(getSupplierLabel(supplier));
+                                      setIsSupplierDropdownOpen(false);
+                                      setIsSupplierTyping(false);
+                                    }}
+                                    className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                                      isSelected
+                                        ? "bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300"
+                                        : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+                                    }`}
+                                  >
+                                    <span className="truncate">{getSupplierLabel(supplier)}</span>
+                                    <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">{supplier.code}</span>
+                                  </button>
+                                </li>
+                              );
+                            })
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -954,7 +1054,8 @@ export default function Materials() {
                   name="status"
                   value={formData.status}
                   onChange={handleFormChange}
-                  className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  disabled={view === "edit" && !canApprove()}
+                  className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 disabled:bg-gray-100 dark:disabled:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <option>Đang hoạt động</option>
                   <option>Ngừng hoạt động</option>
@@ -962,15 +1063,12 @@ export default function Materials() {
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Ghi Chú
-                </label>
-                <textarea
+                <FormTextarea
+                  label="Ghi Chú"
                   name="note"
                   value={formData.note}
-                  onChange={handleFormChange}
+                  onChange={(val) => handleFormChange({ target: { name: "note", value: val } } as any)}
                   rows={4}
-                  className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none"
                   placeholder="Nhập ghi chú chi tiết..."
                 />
               </div>
@@ -984,7 +1082,7 @@ export default function Materials() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                 </svg>
-                {view === "create" ? "Tạo Nguyên Liệu" : "Cập Nhật"}
+                {view === "create" ? "Tạo Vật Tư" : "Cập Nhật"}
               </button>
               <button
                 onClick={() => {
@@ -1036,6 +1134,9 @@ export default function Materials() {
                       }`}
                     >
                       {normalizeStatus(selectedMaterial.status)}
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-violet-100 px-2.5 py-1 text-xs font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                      {getItemTypeLabel(selectedMaterial)}
                     </span>
                     <span className="inline-flex items-center rounded-full bg-white/70 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-gray-800/70 dark:text-gray-300">
                       Đơn vị: {getUnitName(selectedMaterial) || "-"}
@@ -1090,7 +1191,11 @@ export default function Materials() {
                 </div>
                 <div className="rounded-xl border border-gray-200 p-3 dark:border-gray-700">
                   <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Nhà cung cấp</p>
-                  <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">{selectedMaterial.supplier?.name || "-"}</p>
+                  <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">
+                    {resolveMaterialItemType(selectedMaterial) === "asset"
+                      ? "Không yêu cầu (tài sản)"
+                      : selectedMaterial.supplier?.name || "-"}
+                  </p>
                 </div>
                 <div className="rounded-xl border border-gray-200 p-3 dark:border-gray-700 md:col-span-2">
                   <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Kho đang lưu trữ</p>

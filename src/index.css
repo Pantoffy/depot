@@ -6,7 +6,18 @@
 
 @layer base {
   body {
-    @apply relative text-base font-normal z-1 bg-gray-50 font-jakarta;
+    @apply relative z-1 text-base font-normal font-jakarta text-slate-700 dark:text-slate-200;
+    background:
+      radial-gradient(1100px 520px at 92% -12%, rgba(14, 165, 233, 0.12), transparent 58%),
+      radial-gradient(900px 420px at -10% 12%, rgba(16, 185, 129, 0.08), transparent 60%),
+      linear-gradient(180deg, #f8fafc 0%, #eef2f7 44%, #ffffff 100%);
+  }
+
+  .dark body {
+    background:
+      radial-gradient(1100px 520px at 92% -12%, rgba(8, 145, 178, 0.18), transparent 58%),
+      radial-gradient(900px 420px at -10% 12%, rgba(20, 184, 166, 0.14), transparent 60%),
+      linear-gradient(180deg, #020617 0%, #050816 55%, #020617 100%);
   }
 }
 
@@ -138,32 +149,68 @@
 }
 
 .app-unified-shell {
-  border-radius: 1.5rem;
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 1.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
   background:
-    radial-gradient(860px 320px at 100% -20%, rgba(14, 165, 233, 0.1), transparent 60%),
-    radial-gradient(760px 320px at -12% 24%, rgba(16, 185, 129, 0.08), transparent 62%),
-    linear-gradient(180deg, rgba(248, 250, 252, 0.95) 0%, rgba(255, 255, 255, 0.98) 48%, rgba(248, 250, 252, 0.96) 100%);
+    radial-gradient(920px 340px at 102% -18%, rgba(14, 165, 233, 0.11), transparent 60%),
+    radial-gradient(780px 300px at -12% 22%, rgba(16, 185, 129, 0.08), transparent 62%),
+    linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(255, 255, 255, 0.98) 46%, rgba(248, 250, 252, 0.96) 100%);
   box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
 }
 
 .dark .app-unified-shell {
-  border-color: rgba(71, 85, 105, 0.45);
+  border-color: rgba(71, 85, 105, 0.42);
   background:
-    radial-gradient(880px 360px at 110% -25%, rgba(13, 148, 136, 0.22), transparent 58%),
-    radial-gradient(800px 330px at -15% 28%, rgba(14, 116, 144, 0.2), transparent 60%),
-    linear-gradient(180deg, rgba(2, 6, 23, 0.86) 0%, rgba(2, 6, 23, 0.95) 100%);
-  box-shadow: 0 22px 50px rgba(2, 6, 23, 0.45);
+    radial-gradient(920px 340px at 102% -18%, rgba(13, 148, 136, 0.22), transparent 58%),
+    radial-gradient(820px 320px at -12% 22%, rgba(14, 116, 144, 0.18), transparent 60%),
+    linear-gradient(180deg, rgba(2, 6, 23, 0.9) 0%, rgba(2, 6, 23, 0.96) 100%);
+  box-shadow: 0 22px 50px rgba(2, 6, 23, 0.42);
 }
 
 .app-unified-shell > * {
-  border-radius: 1rem;
+  border-radius: 1.125rem;
 }
 
-.app-unified-shell .form-tone-sync,
-.app-unified-shell .dashboard-panel,
-.app-unified-shell > div {
-  backdrop-filter: blur(2px);
+.app-shell-section {
+  @apply rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950/40;
+}
+
+.app-shell-section-soft {
+  @apply rounded-2xl border border-slate-200/80 bg-slate-50/70 shadow-sm dark:border-slate-800/80 dark:bg-slate-900/35;
+}
+
+.app-shell-gradient {
+  background:
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.12), transparent 35%),
+    radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.1), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%);
+}
+
+.dark .app-shell-gradient {
+  background:
+    radial-gradient(circle at top right, rgba(13, 148, 136, 0.18), transparent 35%),
+    radial-gradient(circle at bottom left, rgba(14, 116, 144, 0.16), transparent 30%),
+    linear-gradient(180deg, rgba(2, 6, 23, 0.96) 0%, rgba(3, 7, 18, 0.98) 100%);
+}
+
+.app-page-kicker {
+  @apply text-[11px] font-semibold uppercase tracking-[0.28em] text-cyan-700 dark:text-cyan-300;
+}
+
+.app-page-title {
+  @apply text-xl font-semibold text-slate-900 dark:text-white;
+}
+
+.app-page-subtitle {
+  @apply mt-1 text-sm text-slate-500 dark:text-slate-400;
+}
+
+.app-page-breadcrumb {
+  @apply rounded-full border border-slate-200 bg-white/85 px-3 py-2 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/70;
+}
+
+.app-page-breadcrumb a {
+  @apply text-slate-500 transition hover:text-cyan-700 dark:text-slate-400 dark:hover:text-cyan-300;
 }
 
 @keyframes dashboardFloat {
@@ -878,6 +925,155 @@ span.flatpickr-weekday,
   border: none;
   color: black;
 }
+
+.custom-calendar .fc-daygrid-day-events {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.custom-calendar .fc-daygrid-event {
+  margin: 0 2px !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+.custom-calendar .fc-daygrid-more-link {
+  margin: 2px 6px 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgb(8 145 178);
+  background: rgb(236 254 255);
+  border: 1px solid rgb(165 243 252);
+}
+
+.custom-calendar .fc-daygrid-more-link:hover {
+  color: rgb(14 116 144);
+  background: rgb(207 250 254);
+}
+
+.dark .custom-calendar .fc-daygrid-more-link {
+  color: rgb(103 232 249);
+  background: rgba(8, 145, 178, 0.12);
+  border-color: rgba(34, 211, 238, 0.35);
+}
+
+.dark .custom-calendar .fc-daygrid-more-link:hover {
+  background: rgba(8, 145, 178, 0.2);
+}
+
+.calendar-event-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border-radius: 10px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  border: 1px solid transparent;
+}
+
+.calendar-event-chip__icon {
+  flex: none;
+  width: 14px;
+  text-align: center;
+}
+
+.calendar-event-chip__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-event-chip--export {
+  color: rgb(21 128 61);
+  background: rgb(240 253 244);
+  border-color: rgb(187 247 208);
+}
+
+.calendar-event-chip--import {
+  color: rgb(30 64 175);
+  background: rgb(239 246 255);
+  border-color: rgb(191 219 254);
+}
+
+.calendar-event-chip--event,
+.calendar-event-chip--default {
+  color: rgb(161 98 7);
+  background: rgb(254 252 232);
+  border-color: rgb(254 240 138);
+}
+
+.calendar-event-chip--order {
+  color: rgb(196 181 253);
+  background: rgba(109, 40, 217, 0.15);
+  border-color: rgba(196, 181, 253, 0.35);
+}
+
+.dark .calendar-event-chip--export {
+  color: rgb(134 239 172);
+  background: rgba(22, 163, 74, 0.15);
+  border-color: rgba(134, 239, 172, 0.35);
+}
+
+.dark .calendar-event-chip--import {
+  color: rgb(147 197 253);
+  background: rgba(59, 130, 246, 0.16);
+  border-color: rgba(147, 197, 253, 0.35);
+}
+
+.dark .calendar-event-chip--event,
+.dark .calendar-event-chip--default {
+  color: rgb(253 224 71);
+  background: rgba(234, 179, 8, 0.14);
+  border-color: rgba(253, 224, 71, 0.35);
+}
+
+.dark .calendar-event-chip--order {
+  color: rgb(216 180 254);
+  background: rgba(139, 92, 246, 0.18);
+  border-color: rgba(196, 181, 253, 0.35);
+}
+
+.custom-calendar .fc-popover {
+  border-radius: 14px;
+  border: 1px solid rgb(226 232 240);
+  overflow: hidden;
+}
+
+.dark .custom-calendar .fc-popover {
+  border-color: rgb(51 65 85);
+}
+
+/* Right-side activity drawer styles */
+.activity-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.activity-drawer .summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.activity-drawer .summary-card .value {
+  font-size: 18px;
+  font-weight: 700;
+}
+.activity-drawer .list-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 72px 100px;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.activity-drawer .list-row .code { font-weight: 600; }
+.activity-drawer .list-empty { padding: 28px; text-align: center; color: #94a3b8; }
 .fc.fc-media-screen {
   @apply min-h-screen;
 }

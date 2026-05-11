@@ -1,4 +1,4 @@
-import axios from "axios";
+import { createApiClient } from "./apiClient";
 
 export interface PurchaseOrderDetail {
   id?: number;
@@ -40,13 +40,7 @@ export interface PurchaseOrder {
   purchaseOrderDetails?: PurchaseOrderDetail[];
 }
 
-const apiClient = axios.create({
-  baseURL: "/api/PurchaseOrder",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  timeout: 10000,
-});
+const apiClient = createApiClient("/api/PurchaseOrder");
 
 export const purchaseOrderService = {
   getAllPurchaseOrders: async (): Promise<PurchaseOrder[]> => {

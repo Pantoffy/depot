@@ -1,4 +1,5 @@
 import axios from "axios";
+import { createApiClient } from "./apiClient";
 
 export interface InventoryWarehouse {
   id: number;
@@ -76,13 +77,7 @@ export const getInventoryQuantityForMaterial = (
   return buildInventoryQuantityMap(items)[materialId] || 0;
 };
 
-const apiClient = axios.create({
-  baseURL: "/api/Inventory",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  timeout: 10000,
-});
+const apiClient = createApiClient("/api/Inventory");
 
 export const inventoryService = {
   getAllInventories: async (): Promise<InventoryItem[]> => {

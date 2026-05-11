@@ -1,4 +1,5 @@
 import axios from "axios";
+import { createApiClient } from "./apiClient";
 
 // Interface matching C# Warehouse model
 export interface Warehouse {
@@ -17,13 +18,7 @@ export interface Warehouse {
 
 // Create axios instance with base configuration
 // Sử dụng Vite proxy - request sẽ đi qua localhost:5173/api rồi proxy sang backend
-const apiClient = axios.create({
-  baseURL: "/api/Warehouse",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  timeout: 10000,
-});
+const apiClient = createApiClient("/api/Warehouse");
 
 export const warehouseService = {
   // GET all Warehouses

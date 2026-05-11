@@ -1,4 +1,5 @@
 import axios from "axios";
+import { createApiClient } from "./apiClient";
 
 export type ExportReceiptStatus = "Pending" | "Approved";
 
@@ -49,13 +50,7 @@ export interface ExportReceiptDetail {
 }
 
 // Sử dụng Vite proxy - request sẽ đi qua localhost:5173/api rồi proxy sang backend
-const apiClient = axios.create({
-  baseURL: "/api/ExportReceipt",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  timeout: 10000,
-});
+const apiClient = createApiClient("/api/ExportReceipt");
 
 export const exportService = {
   // GET all export receipts

@@ -7,6 +7,7 @@ import Pagination from "../../components/common/Pagination";
 import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
 import { supplierService, Supplier } from "../../services/supplierService";
+import { useAuth } from "../../context/AuthContext";
 
 // Component: Dropdown hành động (View/Edit/Delete nhà cung cấp)
 const ActionDropdown = ({ 
@@ -53,6 +54,7 @@ const ActionDropdown = ({
 };
 
 export default function Suppliers() {
+  const { canApprove } = useAuth();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -218,6 +220,11 @@ export default function Suppliers() {
   };
 
   const handleToggleStatus = (supplier: Supplier) => {
+    if (!canApprove()) {
+      showToast("Bạn không có quyền thay đổi trạng thái NCC", "error");
+      return;
+    }
+
     const newStatus = supplier.status === "Hoạt động" ? "Ngừng hợp tác" : "Hoạt động";
     showConfirm({
       message: `Bạn có chắc chắn muốn đổi trạng thái thành "${newStatus}"?`,
@@ -309,10 +316,39 @@ export default function Suppliers() {
     return date.toLocaleDateString('vi-VN', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
+  const pageTitle = view === "list" ? "Quản lý nhà cung cấp" : view === "create" ? "Thêm Nhà Cung Cấp Mới" : "Chỉnh Sửa Nhà Cung Cấp";
+  const breadcrumbAction = view === "list" ? (
+    <button
+      onClick={() => {
+        resetForm();
+        setView("create");
+      }}
+      className="inline-flex items-center gap-2 rounded-full bg-cyan-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-cyan-600/20 transition hover:bg-cyan-700"
+    >
+      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+      </svg>
+      Thêm mới
+    </button>
+  ) : (
+    <button
+      onClick={() => {
+        resetForm();
+        setView("list");
+      }}
+      className="module-ghost-btn inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800/70"
+    >
+      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+      </svg>
+      Quay Lại
+    </button>
+  );
+
   return (
     <>
-      <PageMeta title="Quản lý nhà cung cấp" description="Quản lý danh sách nhà cung cấp" />
-      <PageBreadcrumb pageTitle="Quản lý nhà cung cấp" />
+      <PageMeta title={pageTitle} description="Quản lý danh sách nhà cung cấp" />
+      <PageBreadcrumb pageTitle={pageTitle} action={breadcrumbAction} />
 
       {view === "list" && (
         <>
@@ -809,15 +845,17 @@ export default function Suppliers() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
                   </button>
-                  <button
-                    onClick={() => handleToggleStatus(selectedSupplier)}
-                    className="rounded-lg p-2 text-emerald-600 transition-colors hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-500/20"
-                    title="Đổi trạng thái"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                  </button>
+                  {canApprove() && (
+                    <button
+                      onClick={() => handleToggleStatus(selectedSupplier)}
+                      className="rounded-lg p-2 text-emerald-600 transition-colors hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-500/20"
+                      title="Đổi trạng thái"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    </button>
+                  )}
                   <button
                     onClick={() => selectedSupplier.id && handleDeleteSupplier(selectedSupplier.id)}
                     className="rounded-lg p-2 text-rose-600 transition-colors hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-500/20"

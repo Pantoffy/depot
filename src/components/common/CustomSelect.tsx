@@ -11,6 +11,7 @@ type CustomSelectProps = {
   options: CustomSelectOption[];
   buttonClassName?: string;
   menuClassName?: string;
+  disabled?: boolean;
 };
 
 export default function CustomSelect({
@@ -19,6 +20,7 @@ export default function CustomSelect({
   options,
   buttonClassName = "",
   menuClassName = "",
+  disabled = false,
 }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -40,8 +42,11 @@ export default function CustomSelect({
     <div ref={wrapperRef} className={`relative ${buttonClassName}`}>
       <button
         type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
-        className="flex h-10 w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm transition-colors hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+        disabled={disabled}
+        onClick={() => !disabled && setIsOpen((prev) => !prev)}
+        className={`flex py-2.5 w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:border-gray-600 dark:bg-gray-800 dark:text-white ${
+          disabled ? "cursor-not-allowed opacity-50" : ""
+        }`}
       >
         <span className="truncate">{selectedOption?.label}</span>
         <svg

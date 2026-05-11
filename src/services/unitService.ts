@@ -1,5 +1,6 @@
 import axios from "axios";
-
+import { createApiClient } from "./apiClient";
+import type { ItemType } from "./itemTypeService";
 // Interface matching Unit model
 export interface Unit {
   id: number;
@@ -18,13 +19,7 @@ export interface UnitSuggestion {
 }
 
 // Create axios instance with base configuration
-const apiClient = axios.create({
-  baseURL: "/api/Unit",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  timeout: 10000,
-});
+const apiClient = createApiClient("/api/Unit");
 
 type UnitDefinition = {
   id: number;
@@ -55,6 +50,8 @@ const matchWholePhrase = (text: string, keyword: string) => {
   return pattern.test(text);
 };
 
+const MIN_PARTIAL_KEYWORD_LENGTH = 4;
+
 const UNIT_DEFINITIONS: UnitDefinition[] = [
   { id: 1, name: "kg", type: "weight", allowDecimal: true },
   { id: 2, name: "g", type: "weight", allowDecimal: true },
@@ -64,13 +61,13 @@ const UNIT_DEFINITIONS: UnitDefinition[] = [
   { id: 6, name: "cm", type: "length", allowDecimal: true },
   { id: 7, name: "cái", type: "count", allowDecimal: false, aliases: ["cai"] },
   { id: 8, name: "chiếc", type: "count", allowDecimal: false, aliases: ["chiec"] },
-  { id: 9, name: "bộ", type: "count", allowDecimal: false, aliases: ["bo"] },
+  { id: 9, name: "bộ", type: "count", allowDecimal: false, aliases: ["bo", "set", "combo", "kit"] },
   { id: 10, name: "con", type: "count", allowDecimal: false },
   { id: 11, name: "quả", type: "count", allowDecimal: false, aliases: ["qua"] },
   { id: 12, name: "hộp", type: "package", allowDecimal: false, aliases: ["hop"] },
   { id: 13, name: "gói", type: "package", allowDecimal: false, aliases: ["goi"] },
   { id: 14, name: "túi", type: "package", allowDecimal: false, aliases: ["tui"] },
-  { id: 15, name: "thùng", type: "package", allowDecimal: false, aliases: ["thung"] },
+  { id: 15, name: "thùng", type: "package", allowDecimal: false, aliases: ["thung", "kien", "kiện", "kien hang", "kiện hàng"] },
   { id: 16, name: "khay", type: "package", allowDecimal: false },
   { id: 17, name: "chai", type: "package", allowDecimal: false },
   { id: 18, name: "lon", type: "package", allowDecimal: false },
@@ -79,9 +76,15 @@ const UNIT_DEFINITIONS: UnitDefinition[] = [
   { id: 21, name: "cuộn", type: "count", allowDecimal: false, aliases: ["cuon"] },
   { id: 22, name: "hũ/lọ", type: "package", allowDecimal: false, aliases: ["hu/lo", "hu", "lo"] },
   { id: 23, name: "can", type: "package", allowDecimal: false },
+  { id: 24, name: "cái", type: "package", allowDecimal: false },
 ];
 
 const UNIT_KEYWORD_RULES: UnitKeywordRule[] = [
+  {
+    unitName: "bộ",
+    priority: 5,
+    keywords: ["set", "combo", "kit", "bo do", "bo dung cu", "bo san pham"],
+  },
   {
     unitName: "hộp",
     priority: 5,
@@ -268,7 +271,7 @@ const inferFallbackUnitName = (materialName: string): string => {
     { name: "túi", keys: ["tui", "bao"] },
     { name: "chai", keys: ["chai"] },
     { name: "lon", keys: ["lon"] },
-    { name: "thùng", keys: ["thung", "carton"] },
+    { name: "thùng", keys: ["thung", "carton", "kien"] },
     { name: "can", keys: ["can"] },
   ];
 
@@ -289,6 +292,75 @@ const inferFallbackUnitName = (materialName: string): string => {
   return "kg";
 };
 
+const inferAssetUnitName = (itemName: string): string => {
+  const normalized = normalizeText(itemName);
+
+  // Check for set/kit items first (higher priority)
+  if (["bo ", " bo", "set", "combo", "kit", "ban phim", "ban phim chuot", "ban phim va chuot"].some((k) => normalized.includes(k))) {
+    return "bộ";
+  }
+
+  // Furniture (Nội thất) - use "cái"
+  const furnitureKeywords = [
+    "ghe", "ban", "tu", "ke", "giuong", "sofa", "keot", "cua", "cauthang",
+    "trang tri", "den", "quat", "may lanh", "may lam nong", "quan pho",
+    "tu lanh", "lo lo", "to an",
+    // More furniture variations
+    "ghe xoay", "ghe van phong", "ghe cafe", "ghe bar", "ghe tieu", "ghe go",
+    "ban lam viec", "ban hoc", "ban an", "ban coffee", "ban sofa", "ban vuong",
+    "tu dung quan ao", "tu trang suc", "tu tap tin", "tu an", "tu ti vi",
+    "ke sach", "ke trang tri", "ke dep", "ke treo", "ke to", "ke to",
+    "ngan tu", "ngan ke",
+  ];
+
+  if (furnitureKeywords.some((k) => normalized.includes(k))) {
+    return "cái";
+  }
+
+  // Equipment (Thiết bị) - mostly use "chiếc" or "cái"
+  const equipmentKeywords = [
+    "may", "thiet bi", "device", "equipment", "may tinh", "laptop", "pc", "desktop",
+    "may photo", "may in", "may fax", "may quay", "may chup hinh", "camera", "may quay phim",
+    "may phat nhac", "lo vi song", "man hinh", "man hinh lcd", "ti vi", "tivi",
+    "may chieu", "projector", "may hut bui", "may sat la", "ban la", "ban ui",
+    "ban tay", "man sang", "anh sang", "den led", "quat dien", "bon rua",
+    "voi sen", "may sach khi", "may sach nuoc",
+  ];
+
+  if (equipmentKeywords.some((k) => normalized.includes(k))) {
+    return "chiếc";
+  }
+
+  // Tools (Công cụ) - use "cái"
+  const toolKeywords = [
+    "dung cu", "cong cu", "bua", "cuon", "kim", "tua vit", "co le", "chia khoa",
+    "dao", "keo", "kep", "kep nuoi ca", "kim tiem", "kim khau", "say toc", "may khoan",
+    "may khoan dien", "may duc", "may cat", "may lien", "day do", "thuoc do",
+    "cap do", "muc do", "thep do", "bang do", "compa", "thuo", "chi khuon",
+    "bao tay", "gan tay", "khau trang", "kinh bao hiem", "mu bao hiem",
+  ];
+
+  if (toolKeywords.some((k) => normalized.includes(k))) {
+    return "cái";
+  }
+
+  // Infrastructure & General Assets (Cơ sở vật chất)
+  const infrastructureKeywords = [
+    "cua", "o cua", "khoa cua", "ong nuoc", "ong khi", "cau", "thang",
+    "tay van", "o thoat nuoc", "bon cau", "bon tam", "ban tam", "goi tam",
+    "bo tam", "tui tam", "man tam", "riem tam", "ro chan", "thung rac",
+    "thung rua", "gio rua", "bang pan", "bang pan go", "bang pan sat",
+    "cay tram", "be hoa", "chau hoa", "ho ca", "lo nuoi", "cot tro",
+  ];
+
+  if (infrastructureKeywords.some((k) => normalized.includes(k))) {
+    return "cái";
+  }
+
+  // Default for other assets
+  return "cái";
+};
+
 /**
  * Tự động gợi ý đơn vị dựa trên tên nguyên liệu.
  * Trả về unitId + unitName phù hợp nhất, hoặc null nếu không tìm thấy.
@@ -296,8 +368,25 @@ const inferFallbackUnitName = (materialName: string): string => {
 export function suggestUnit(
   materialName: string,
   units: Unit[] = DEFAULT_UNITS,
+  itemType: ItemType = "material",
 ): UnitSuggestion | null {
   if (!materialName || materialName.trim().length < 2) return null;
+
+  if (itemType === "asset") {
+    const preferredName = inferAssetUnitName(materialName);
+    const matchedUnit = resolveUnitByName(preferredName, units) || resolveUnitByName("cái", units);
+
+    if (!matchedUnit) return null;
+
+    const definition = findDefinitionByName(matchedUnit.name);
+    return {
+      unitId: matchedUnit.id,
+      unitName: matchedUnit.name,
+      unitType: definition?.type || "count",
+      allowDecimal: definition?.allowDecimal ?? false,
+      confidence: "high",
+    };
+  }
 
   const normalizedName = normalizeText(materialName);
 
@@ -316,10 +405,18 @@ export function suggestUnit(
       const normalizedKeyword = normalizeText(keyword);
       if (!normalizedKeyword) continue;
 
+      const wholePhraseMatch = matchWholePhrase(normalizedName, normalizedKeyword);
       const partialMatch = normalizedName.includes(normalizedKeyword);
-      if (!partialMatch) continue;
 
-      if (matchWholePhrase(normalizedName, normalizedKeyword)) {
+      if (!wholePhraseMatch && !partialMatch) continue;
+
+      // Short keywords (e.g. "lê", "hẹ") are noisy in partial mode.
+      // Only allow partial scoring when keyword is long enough.
+      if (!wholePhraseMatch && normalizedKeyword.length < MIN_PARTIAL_KEYWORD_LENGTH) {
+        continue;
+      }
+
+      if (wholePhraseMatch) {
         score += normalizedKeyword.length * 10;
       } else {
         score += normalizedKeyword.length * 3;

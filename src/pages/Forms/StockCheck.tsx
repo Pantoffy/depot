@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import Flatpickr from "react-flatpickr";
 import { useLocation, useNavigate, useParams } from "react-router";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import Pagination from "../../components/common/Pagination";
 import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
+import { FormInput, FormDatePicker } from "../../components/form";
 import { stockService, type StockCheck } from "../../services/stockService";
 import { warehouseService, type Warehouse } from "../../services/warehouseService";
 import { materialService, type Material } from "../../services/materialService";
@@ -157,7 +157,6 @@ export default function KiemKe() {
     warehouseId: 0,
     startDate: new Date().toISOString().split("T")[0],
     endDate: "",
-    createdBy: "",
     status: "Pending",
   });
 
@@ -199,11 +198,13 @@ export default function KiemKe() {
     recordedCheck: true,
     status: "",
   });
+  const [isMaterialDropdownOpen, setIsMaterialDropdownOpen] = useState(false);
 
   // Section refs for sticky progress bar navigation
   const generalInfoRef = useRef<HTMLDivElement>(null);
   const teamRef = useRef<HTMLDivElement>(null);
   const assetRef = useRef<HTMLDivElement>(null);
+  const materialSearchWrapperRef = useRef<HTMLDivElement>(null);
 
   const scrollToSection = (ref: React.RefObject<HTMLDivElement | null>) => {
     if (ref.current) {
@@ -224,6 +225,17 @@ export default function KiemKe() {
   useEffect(() => {
     setView(resolveViewByPath(location.pathname));
   }, [location.pathname]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (materialSearchWrapperRef.current && !materialSearchWrapperRef.current.contains(event.target as Node)) {
+        setIsMaterialDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // TODO: Load available staff from API (endpoint /Team/All not yet implemented in backend)
   // For now, users can manually enter staff names
@@ -551,6 +563,7 @@ export default function KiemKe() {
       systemQty: String(option.systemQty),
       checkQty: prev.checkQty === "0" ? String(option.systemQty) : prev.checkQty,
     }));
+    setIsMaterialDropdownOpen(false);
   };
 
   const handleMaterialSearchInputChange = (input: string) => {
@@ -575,6 +588,7 @@ export default function KiemKe() {
       materialName: "",
       supplier: "",
     }));
+    setIsMaterialDropdownOpen(Boolean(input.trim()));
   };
 
   const handleOpenAssetModal = () => {
@@ -664,7 +678,6 @@ export default function KiemKe() {
           warehouseId,
           startDate: formData.startDate,
           endDate: formData.endDate,
-          createdBy: formData.createdBy.trim() || "Chưa cập nhật",
           status: "Pending",
         };
 
@@ -706,64 +719,6 @@ export default function KiemKe() {
     }
   };
 
-  const handleCreateRequest = async () => {
-    if (isSaving) return;
-    if (selectedWarehouseIds.length === 0) {
-      showToast("Vui lòng chọn ít nhất một kho kiểm kê", "warning");
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      for (const warehouseId of selectedWarehouseIds) {
-        const stockCheckData: Omit<StockCheck, "id" | "createdTime"> = {
-          code: selectedWarehouseIds.length > 1 ? `${generatedCode}-K${warehouseId}` : generatedCode,
-          name: formData.name.trim() || "Chưa đặt tên phiếu",
-          warehouseId,
-          startDate: formData.startDate,
-          endDate: formData.endDate,
-          createdBy: formData.createdBy.trim() || "Chưa cập nhật",
-          status: "Approved",
-        };
-
-        const createdStockCheck = await stockService.createStockCheck(stockCheckData);
-
-        if (createdStockCheck.id && assetRows.length > 0) {
-          for (const asset of assetRows.filter((row) => row.warehouseId === warehouseId)) {
-            if (!asset.materialId) continue;
-            await stockService.createStockDetail({
-              stockCheckId: createdStockCheck.id,
-              materialId: asset.materialId,
-              warehouseId,
-              systemQuantity: asset.systemQty,
-              actualQuantity: asset.checkQty,
-              handlingProposal: asset.handlingProposal,
-            });
-          }
-        }
-
-        if (createdStockCheck.id && teamMembers.length > 0) {
-          for (const member of teamMembers) {
-            await stockService.createStockTeam(createdStockCheck.id, {
-              name: member.name,
-              role: member.role,
-              note: member.note,
-            });
-          }
-        }
-      }
-
-      showToast("Đã trình phiếu kiểm kê cho duyệt", "success");
-      navigate("/kiem-ke");
-      await loadStockChecks(); // Reload data
-    } catch (error) {
-      console.error("Error creating request:", error);
-      showToast("Lỗi trình phiếu kiểm kê", "error");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const handleOpenReceipt = (receipt: StockCheckReceipt) => {
     void (async () => {
       try {
@@ -775,7 +730,6 @@ export default function KiemKe() {
           warehouseId: stockCheck.warehouseId || 0,
           startDate: stockCheck.startDate?.split("T")[0] || receipt.ngayTao,
           endDate: stockCheck.endDate?.split("T")[0] || receipt.endDate || "",
-          createdBy: stockCheck.createdBy || (receipt.nguoiTao === "Chưa cập nhật" ? "" : receipt.nguoiTao),
           status: stockCheck.status || (receipt.trangThai === "Nháp" ? "Pending" : "Approved"),
         });
         setSelectedWarehouseIds(stockCheck.warehouseId ? [stockCheck.warehouseId] : []);
@@ -832,7 +786,6 @@ export default function KiemKe() {
       warehouseId: 0,
       startDate: new Date().toISOString().split("T")[0],
       endDate: "",
-      createdBy: "",
       status: "Pending",
     });
     setSelectedWarehouseIds([]);
@@ -979,13 +932,36 @@ export default function KiemKe() {
     setAssetRows((prev) => prev.filter((row) => row.id !== id));
   };
 
+  const pageTitle = view === "list" ? "Kiểm kê" : view === "create" ? "Tạo phiếu kiểm kê" : "Chi tiết phiếu kiểm kê";
+  const breadcrumbAction = view === "list" ? (
+    <button
+      onClick={handleCreateNew}
+      className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-all duration-200 shadow-sm"
+    >
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+      </svg>
+      Tạo mới
+    </button>
+  ) : (
+    <button
+      onClick={() => { setView("list"); navigate("/kiem-ke"); }}
+      className="module-ghost-btn inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800/70"
+    >
+      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+      </svg>
+      Quay lại danh sách
+    </button>
+  );
+
   return (
     <>
       <PageMeta 
         title={view === "list" ? "Danh sách phiếu kiểm kê" : "Tạo mới phiếu kiểm kê"}
         description={view === "list" ? "Danh sách phiếu kiểm kê" : "Màn hình tạo phiếu kiểm kê"}
       />
-      <PageBreadcrumb pageTitle="Kiểm kê" />
+      <PageBreadcrumb pageTitle={pageTitle} action={breadcrumbAction} />
 
       {view === "list" && (
         <>
@@ -1032,15 +1008,6 @@ export default function KiemKe() {
                     </svg>
                     Export
                   </button>
-                  <button
-                    onClick={() => handleCreateNew()}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-all duration-200 shadow-sm"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                    </svg>
-                    Tạo mới
-                  </button>
                 </div>
               </div>
             </div>
@@ -1057,7 +1024,7 @@ export default function KiemKe() {
                     placeholder="Tìm kiếm..."
                     value={receiptSearchTerm}
                     onChange={(e) => { setReceiptSearchTerm(e.target.value); setCurrentPage(1); }}
-                    className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    className="h-11 w-full pl-10 px-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   />
                 </div>
                 
@@ -1076,7 +1043,7 @@ export default function KiemKe() {
                   {isFilterOpen && (
                     <>
                       <div 
-                        className="fixed inset-0 z-40" 
+                        className="fixed inset-0 z-40"    
                         onClick={() => setIsFilterOpen(false)}
                       />
                       <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl z-50 p-4">
@@ -1269,9 +1236,9 @@ export default function KiemKe() {
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                     </svg>
-                    Lưu nháp
+                    Lập phiếu
                   </button>
-                  <button
+                  {/* <button
                     onClick={handleCreateRequest}
                     className="inline-flex items-center gap-2 rounded-lg border border-white/50 bg-amber-500 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-amber-400"
                   >
@@ -1279,7 +1246,7 @@ export default function KiemKe() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                     </svg>
                     Soạn thảo tờ trình
-                  </button>
+                  </button> */}
                   <button
                     onClick={() => navigate("/kiem-ke")}
                     className="inline-flex items-center gap-2 rounded-lg border border-white/40 bg-white/10 px-3.5 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/20"
@@ -1424,13 +1391,6 @@ export default function KiemKe() {
                   onChange={(v) => setFormData((p) => ({ ...p, name: v }))}
                   placeholder="Nhập tên phiếu"
                 />
-                <Field
-                  label="Người tạo"
-                  value={formData.createdBy}
-                  onChange={(v) => setFormData((p) => ({ ...p, createdBy: v }))}
-                  placeholder="Nhập người tạo"
-                />
-
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Kho kiểm kê</label>
                   <CustomMultiSelect
@@ -1522,7 +1482,6 @@ export default function KiemKe() {
                           <CustomSelect
                             value={memberInput.name}
                             onChange={(value) => setMemberInput((p) => ({ ...p, name: value }))}
-                            disabled={availableExistingMembers.length === 0}
                             options={[
                               {
                                 value: "",
@@ -1539,7 +1498,7 @@ export default function KiemKe() {
                         {/* Add Button */}
                         <button
                           onClick={handleAddExistingMember}
-                          className="h-10 w-full rounded-lg bg-indigo-600 px-4 text-sm font-medium text-white transition-colors hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600"
+                          className="h-11 w-full rounded-lg bg-indigo-600 px-4 text-sm font-medium text-white transition-colors hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600"
                         >
                           <svg className="mr-2 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
@@ -1573,42 +1532,33 @@ export default function KiemKe() {
                     <div className="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-900/40">
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-4 md:items-end">
                         {/* New Member Name Input */}
-                        <div>
-                          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Tên người mới</label>
-                          <input
-                            value={newMemberForm.name}
-                            onChange={(e) => setNewMemberForm((p) => ({ ...p, name: e.target.value }))}
-                            placeholder="Nhập tên đầy đủ"
-                            className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                          />
-                        </div>
+                        <FormInput
+                          label="Tên người mới"
+                          value={newMemberForm.name}
+                          onChange={(e) => setNewMemberForm((p) => ({ ...p, name: e.target.value }))}
+                          placeholder="Nhập tên đầy đủ"
+                        />
 
                         {/* New Member Role Input */}
-                        <div>
-                          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Chức danh</label>
-                          <input
-                            value={newMemberForm.role}
-                            onChange={(e) => setNewMemberForm((p) => ({ ...p, role: e.target.value }))}
-                            placeholder="VD: Tổ trưởng, Kiểm kho..."
-                            className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                          />
-                        </div>
+                        <FormInput
+                          label="Chức danh"
+                          value={newMemberForm.role}
+                          onChange={(e) => setNewMemberForm((p) => ({ ...p, role: e.target.value }))}
+                          placeholder="VD: Tổ trưởng, Kiểm kho..."
+                        />
 
                         {/* New Member Note Input */}
-                        <div>
-                          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Ghi chú</label>
-                          <input
-                            value={newMemberForm.note}
-                            onChange={(e) => setNewMemberForm((p) => ({ ...p, note: e.target.value }))}
-                            placeholder="Ghi chú (tuỳ chọn)"
-                            className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                          />
-                        </div>
+                        <FormInput
+                          label="Ghi chú"
+                          value={newMemberForm.note}
+                          onChange={(e) => setNewMemberForm((p) => ({ ...p, note: e.target.value }))}
+                          placeholder="Ghi chú (tuỳ chọn)"
+                        />
 
                         {/* Create & Add Button */}
                         <button
                           onClick={handleAddNewMember}
-                          className="h-10 w-full rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white transition-colors hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600"
+                          className="h-11 w-full rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white transition-colors hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600"
                         >
                           <svg className="mr-2 inline h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
@@ -1698,7 +1648,7 @@ export default function KiemKe() {
                       value={assetFilter.keyword}
                       onChange={(e) => setAssetFilter((p) => ({ ...p, keyword: e.target.value }))}
                       placeholder="Tìm kiếm mã hoặc tên vật tư"
-                      className="h-10 w-full rounded-lg border border-gray-300 bg-white pl-10 pr-3 text-sm text-gray-900 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                      className="h-11 w-full rounded-lg border border-gray-300 bg-white pl-10 px-4 py-2.5 text-sm text-gray-900 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
                     />
                   </div>
 
@@ -2056,91 +2006,92 @@ export default function KiemKe() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Kho kiểm kê</label>
-                  <div className="h-10 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white flex items-center">
+                  <div className="h-11 w-full rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white flex items-center">
                     {selectedWarehouseNames.length > 0 ? selectedWarehouseNames.join(", ") : "Chưa chọn kho"}
                   </div>
                 </div>
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Vật tư *</label>
-                  <div className="space-y-2">
-                    <input
-                      value={assetDraft.materialSearch}
-                      onChange={(e) => handleMaterialSearchInputChange(e.target.value)}
-                      placeholder="Nhập để tìm vật tư theo mã hoặc tên"
-                      className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    />
-                    <div className="max-h-40 overflow-auto rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-                      {filteredMaterialOptions.length === 0 ? (
-                        <p className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">Không có vật tư thuộc kho đã chọn</p>
-                      ) : (
-                        filteredMaterialOptions.map((option) => (
-                          <button
-                            key={`${option.warehouseId}-${option.materialId}`}
-                            type="button"
-                            onClick={() => handleSelectMaterialFromWarehouse(option)}
-                            className="flex w-full items-start justify-between gap-2 border-b border-gray-100 px-3 py-2 text-left text-xs text-gray-700 hover:bg-blue-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-blue-900/20"
-                          >
-                            <span>{option.code} - {option.name} ({option.warehouseName})</span>
-                            <span className="text-gray-500 dark:text-gray-400">SL: {option.systemQty}</span>
-                          </button>
-                        ))
-                      )}
+                  <div ref={materialSearchWrapperRef} className="relative space-y-2">
+                    <div className="relative">
+                      <input
+                        value={assetDraft.materialSearch}
+                        onFocus={() => setIsMaterialDropdownOpen(true)}
+                        onChange={(e) => handleMaterialSearchInputChange(e.target.value)}
+                        placeholder="Nhập để tìm vật tư theo mã hoặc tên"
+                        className="h-11 w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 pr-10 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setIsMaterialDropdownOpen((prev) => !prev)}
+                        className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        aria-label={isMaterialDropdownOpen ? "Đóng danh sách vật tư" : "Mở danh sách vật tư"}
+                      >
+                        <svg className={`h-4 w-4 transition-transform ${isMaterialDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
                     </div>
+
+                    {isMaterialDropdownOpen && (
+                      <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-40 overflow-auto rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800">
+                        {filteredMaterialOptions.length === 0 ? (
+                          <p className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">Không có vật tư thuộc kho đã chọn</p>
+                        ) : (
+                          filteredMaterialOptions.map((option) => (
+                            <button
+                              key={`${option.warehouseId}-${option.materialId}`}
+                              type="button"
+                              onClick={() => handleSelectMaterialFromWarehouse(option)}
+                              className="flex w-full items-start justify-between gap-2 border-b border-gray-100 px-3 py-2 text-left text-xs text-gray-700 hover:bg-blue-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-blue-900/20"
+                            >
+                              <span>{option.code} - {option.name} ({option.warehouseName})</span>
+                              <span className="text-gray-500 dark:text-gray-400">SL: {option.systemQty}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Mã vật tư *</label>
-                  <input
-                    value={assetDraft.materialCode}
-                    readOnly
-                    placeholder="Tự động theo vật tư đã chọn"
-                    className="h-10 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 text-sm text-gray-900 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                  />
-                </div>
+                <FormInput
+                  label="Mã vật tư *"
+                  value={assetDraft.materialCode}
+                  readOnly
+                  placeholder="Tự động theo vật tư đã chọn"
+                />
 
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Tên vật tư *</label>
-                  <input
-                    value={assetDraft.materialName}
-                    readOnly
-                    placeholder="Tự động theo vật tư đã chọn"
-                    className="h-10 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 text-sm text-gray-900 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                  />
-                </div>
+                <FormInput
+                  label="Tên vật tư *"
+                  value={assetDraft.materialName}
+                  readOnly
+                  placeholder="Tự động theo vật tư đã chọn"
+                />
 
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Nhà cung cấp</label>
-                  <input
-                    value={assetDraft.supplier}
-                    readOnly
-                    placeholder="Tự động theo vật tư đã chọn"
-                    className="h-10 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 text-sm text-gray-900 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                  />
-                </div>
+                <FormInput
+                  label="Nhà cung cấp"
+                  value={assetDraft.supplier}
+                  readOnly
+                  placeholder="Tự động theo vật tư đã chọn"
+                />
 
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">SL hệ thống ghi nhận</label>
-                  <input
-                    type="number"
-                    value={assetDraft.systemQty}
-                    onChange={(e) => setAssetDraft((p) => ({ ...p, systemQty: e.target.value }))}
-                    placeholder="0"
-                    className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                  />
-                </div>
+                <FormInput
+                  label="SL hệ thống ghi nhận"
+                  type="number"
+                  value={assetDraft.systemQty}
+                  onChange={(e) => setAssetDraft((p) => ({ ...p, systemQty: e.target.value }))}
+                  placeholder="0"
+                />
 
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">SL kiểm kê</label>
-                  <input
-                    type="number"
-                    value={assetDraft.checkQty}
-                    onChange={(e) => setAssetDraft((p) => ({ ...p, checkQty: e.target.value }))}
-                    placeholder="0"
-                    className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                  />
-                </div>
+                <FormInput
+                  label="SL kiểm kê"
+                  type="number"
+                  value={assetDraft.checkQty}
+                  onChange={(e) => setAssetDraft((p) => ({ ...p, checkQty: e.target.value }))}
+                  placeholder="0"
+                />
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Đề nghị xử lý</label>
@@ -2295,17 +2246,14 @@ function Field({
   readOnly = false,
 }: FieldProps) {
   return (
-    <div>
-      <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>
-      <input
-        type={type}
-        value={value}
-        readOnly={readOnly}
-        onChange={(e) => onChange?.(e.target.value)}
-        placeholder={placeholder}
-        className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:read-only:bg-gray-700"
-      />
-    </div>
+    <FormInput
+      label={label}
+      value={value}
+      onChange={(e) => onChange?.(e.target.value)}
+      placeholder={placeholder}
+      type={type as any}
+      readOnly={readOnly}
+    />
   );
 }
 
@@ -2316,37 +2264,13 @@ function DatePickerField({
   placeholder = "Chọn ngày",
 }: DatePickerFieldProps) {
   return (
-    <div>
-      <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>
-      <div className="relative w-full flatpickr-wrapper">
-        <Flatpickr
-          value={value}
-          onChange={(selectedDates: Date[]) => {
-            const selectedDate = selectedDates[0];
-            onChange(selectedDate ? selectedDate.toISOString().split("T")[0] : "");
-          }}
-          options={{
-            dateFormat: "Y-m-d",
-            altInput: true,
-            altFormat: "d/m/Y",
-            disableMobile: true,
-            altInputClass: "po-expected-delivery-input w-full flatpickr-input",
-          }}
-          placeholder={placeholder}
-          className="hidden"
-        />
-        <span className="pointer-events-none absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300">
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M8 7V3m8 4V3m-9 8h10m-13 9h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v11a2 2 0 002 2z"
-            />
-          </svg>
-        </span>
-      </div>
-    </div>
+    <FormDatePicker
+      label={label}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      displayFormat="d/m/Y"
+    />
   );
 }
 
@@ -2468,11 +2392,46 @@ function CustomMultiSelect({
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className="flex h-10 w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm transition-colors hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+        className="flex w-full items-start justify-between gap-3 rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:border-gray-600 dark:bg-gray-800 dark:text-white"
       >
-        <span className="truncate">{selectedLabels.length > 0 ? selectedLabels.join(", ") : placeholder}</span>
+        <div className="min-w-0 flex-1 text-left">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Kho kiểm kê
+            </span>
+            {selectedLabels.length > 0 && (
+              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 dark:bg-blue-500/20 dark:text-blue-200">
+                {selectedLabels.length} đã chọn
+              </span>
+            )}
+          </div>
+
+          {selectedLabels.length === 0 ? (
+            <span className="mt-1 block truncate text-sm text-gray-500 dark:text-gray-400" title={placeholder}>
+              {placeholder}
+            </span>
+          ) : (
+            <div className="mt-2 flex flex-wrap gap-1.5" title={selectedLabels.join(", ")}>
+              {selectedLabels.slice(0, 3).map((label) => (
+                <span
+                  key={label}
+                  className="inline-flex max-w-full items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/15 dark:text-blue-200"
+                >
+                  <span className="truncate">{label}</span>
+                </span>
+              ))}
+
+              {selectedLabels.length > 3 && (
+                <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-200">
+                  +{selectedLabels.length - 3}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
         <svg
-          className={`h-4 w-4 text-gray-500 transition-transform dark:text-gray-300 ${isOpen ? "rotate-180" : ""}`}
+          className={`mt-1 h-4 w-4 shrink-0 text-gray-500 transition-transform dark:text-gray-300 ${isOpen ? "rotate-180" : ""}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"

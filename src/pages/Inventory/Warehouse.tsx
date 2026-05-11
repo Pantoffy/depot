@@ -6,7 +6,22 @@ import PageMeta from "../../components/common/PageMeta";
 import Pagination from "../../components/common/Pagination";
 import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
+import { FormTextarea } from "../../components/form";
 import { warehouseService, Warehouse } from "../../services/warehouseService";
+
+const WAREHOUSE_TYPE_OPTIONS = [
+  { value: 1, label: "Vật tư", description: "Kho vật tư - Tiêu hao (Nguyên liệu, gia vị, bao bì, đồ gia dụng)" },
+  { value: 2, label: "Hàng hóa", description: "Kho hàng hóa - Bán lẻ (Nước, snack, mì, sản phẩm không chế biến)" },
+  { value: 3, label: "Tài sản", description: "Kho tài sản - Dài hạn (Máy móc, thiết bị, bàn ghế, không xuất nhập thường xuyên)" },
+] as const;
+
+const getWarehouseTypeLabel = (typeId?: number) => {
+  return WAREHOUSE_TYPE_OPTIONS.find((option) => option.value === Number(typeId))?.label || "Unknown";
+};
+
+const getWarehouseTypeDescription = (typeId?: number) => {
+  return WAREHOUSE_TYPE_OPTIONS.find((option) => option.value === Number(typeId))?.description || "Unknown";
+};
 
 // Dropdown Action Component
 const ActionDropdown = ({ 
@@ -286,10 +301,39 @@ export default function QuanLyKho() {
     return date.toLocaleDateString('vi-VN', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
+  const pageTitle = view === "list" ? "Quản lý kho" : view === "create" ? "Thêm kho mới" : "Chỉnh sửa kho";
+  const breadcrumbAction = view === "list" ? (
+    <button
+      onClick={() => {
+        resetForm();
+        setView("create");
+      }}
+      className="inline-flex items-center gap-2 rounded-full bg-cyan-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-cyan-600/20 transition hover:bg-cyan-700"
+    >
+      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+      </svg>
+      Thêm mới
+    </button>
+  ) : (
+    <button
+      onClick={() => {
+        resetForm();
+        setView("list");
+      }}
+      className="module-ghost-btn inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800/70"
+    >
+      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+      </svg>
+      Quay Lại
+    </button>
+  );
+
   return (
     <>
-      <PageMeta title="Quản lý kho" description="Quản lý kho và theo dõi tồn kho" />
-      <PageBreadcrumb pageTitle="Quản lý kho" />
+      <PageMeta title={pageTitle} description="Quản lý kho và theo dõi tồn kho" />
+      <PageBreadcrumb pageTitle={pageTitle} action={breadcrumbAction} />
 
       {view === "list" && (
         <>
@@ -607,14 +651,21 @@ export default function QuanLyKho() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Loại Kho
                   </label>
-                  <input
-                    type="number"
+                  <select
                     name="typeId"
                     value={formData.typeId}
                     onChange={handleFormChange}
                     className="w-full px-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                    placeholder="1"
-                  />
+                  >
+                    {WAREHOUSE_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {getWarehouseTypeDescription(formData.typeId)}
+                  </p>
                 </div>
 
                 <div>
@@ -690,15 +741,12 @@ export default function QuanLyKho() {
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Ghi Chú
-                  </label>
-                  <textarea
+                  <FormTextarea
+                    label="Ghi Chú"
                     name="note"
                     value={formData.note}
-                    onChange={handleFormChange}
+                    onChange={(val) => handleFormChange({ target: { name: "note", value: val } } as any)}
                     rows={3}
-                    className="w-full px-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none"
                     placeholder="Ghi chú thêm về kho..."
                   />
                 </div>
@@ -760,7 +808,7 @@ export default function QuanLyKho() {
                       {selectedWarehouse.status || "Chưa xác định"}
                     </span>
                     <span className="inline-flex items-center rounded-full bg-white/70 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-gray-800/70 dark:text-gray-300">
-                      Loại kho: {selectedWarehouse.typeId || "-"}
+                      Loại kho: {getWarehouseTypeLabel(selectedWarehouse.typeId)}
                     </span>
                   </div>
                 </div>
@@ -795,6 +843,10 @@ export default function QuanLyKho() {
                 <div className="rounded-xl border border-cyan-200 bg-white/80 p-3 dark:border-cyan-500/30 dark:bg-cyan-500/10">
                   <p className="text-xs font-medium text-cyan-700 dark:text-cyan-300">Quản lý kho</p>
                   <p className="mt-1 text-lg font-semibold text-cyan-900 dark:text-cyan-100">{selectedWarehouse.managerName || "-"}</p>
+                </div>
+                <div className="rounded-xl border border-violet-200 bg-white/80 p-3 dark:border-violet-500/30 dark:bg-violet-500/10">
+                  <p className="text-xs font-medium text-violet-700 dark:text-violet-300">Loại kho</p>
+                  <p className="mt-1 text-lg font-semibold text-violet-900 dark:text-violet-100">{getWarehouseTypeLabel(selectedWarehouse.typeId)}</p>
                 </div>
                 <div className="rounded-xl border border-emerald-200 bg-white/80 p-3 dark:border-emerald-500/30 dark:bg-emerald-500/10">
                   <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Ngày tạo</p>

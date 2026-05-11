@@ -11,8 +11,10 @@ import { showConfirm } from "../../components/common/ConfirmDialog";
 import { exportService } from "../../services/exportService";
 import { inventoryService } from "../../services/inventoryService";
 import { materialService } from "../../services/materialService";
+import { hydrateMaterialsItemType, resolveMaterialItemType } from "../../services/itemTypeService";
 import { unitService } from "../../services/unitService";
 import { warehouseService } from "../../services/warehouseService";
+import { useAuth } from "../../context/AuthContext";
 
 interface MaterialLine {
   stt: number;
@@ -49,7 +51,14 @@ const RECEIPT_STATUS = {
 
 type ReceiptStatusLabel = (typeof RECEIPT_STATUS)[keyof typeof RECEIPT_STATUS];
 
+const EXPORT_REASON_SALE = "Xuất bán";
+const EXPORT_REASON_INTERNAL_ALLOCATE = "Cấp phát nội bộ";
+const EXPORT_REASON_INTERNAL_TRANSFER = "Chuyển nội bộ";
+const EXPORT_REASON_DAMAGE = "Hỏng hóc";
+const EXPORT_REASON_OTHER = "Khác";
+
 export default function XuatKho() {
+  const { canApprove } = useAuth();
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<"list" | "create" | "edit" | "detail">(
@@ -85,7 +94,7 @@ export default function XuatKho() {
     nguoiNhan: "",
     soChungTu: "",
     kho: "",
-    lyDo: "Bán hàng",
+    lyDo: EXPORT_REASON_SALE,
   });
 
   const [materials, setMaterials] = useState<MaterialLine[]>([]);
@@ -133,8 +142,9 @@ export default function XuatKho() {
   const fetchMaterials = async () => {
     try {
       const data = await materialService.getAllMaterials();
-      setAvailableMaterials(data || []);
-      return data || [];
+      const hydrated = hydrateMaterialsItemType(data || []);
+      setAvailableMaterials(hydrated);
+      return hydrated;
     } catch (err) {
       console.error("Lỗi tải danh sách nguyên liệu", err);
       return [];
@@ -352,7 +362,7 @@ export default function XuatKho() {
       nguoiNhan: "",
       soChungTu: "",
       kho: "",
-      lyDo: "Bán hàng",
+      lyDo: EXPORT_REASON_SALE,
     });
     setMaterials([]);
     setMaterialInput({
@@ -537,6 +547,36 @@ export default function XuatKho() {
     },
   );
 
+  const getLineItemType = (materialId: number) => {
+    const material = availableMaterials.find(
+      (item: any) => Number(item.id) === Number(materialId),
+    );
+    return resolveMaterialItemType(material);
+  };
+
+  const hasAssetLines = materials.some(
+    (line) => getLineItemType(line.materialId) === "asset",
+  );
+
+  const reasonOptions = hasAssetLines
+    ? [
+        { value: EXPORT_REASON_INTERNAL_ALLOCATE, label: EXPORT_REASON_INTERNAL_ALLOCATE },
+        { value: EXPORT_REASON_INTERNAL_TRANSFER, label: EXPORT_REASON_INTERNAL_TRANSFER },
+        { value: EXPORT_REASON_OTHER, label: EXPORT_REASON_OTHER },
+      ]
+    : [
+        { value: EXPORT_REASON_SALE, label: EXPORT_REASON_SALE },
+        { value: EXPORT_REASON_DAMAGE, label: EXPORT_REASON_DAMAGE },
+        { value: EXPORT_REASON_OTHER, label: EXPORT_REASON_OTHER },
+      ];
+
+  useEffect(() => {
+    if (!hasAssetLines) return;
+    if (formData.lyDo === EXPORT_REASON_SALE || formData.lyDo === EXPORT_REASON_DAMAGE) {
+      setFormData((prev) => ({ ...prev, lyDo: EXPORT_REASON_INTERNAL_ALLOCATE }));
+    }
+  }, [hasAssetLines, formData.lyDo]);
+
   const buildExportReceiptPayload = (
     receipt: Receipt,
     status: ReceiptStatusLabel,
@@ -647,7 +687,7 @@ export default function XuatKho() {
       nguoiNhan: receiptForEdit.receiverName,
       soChungTu: receiptForEdit.soChungTu || "",
       kho: receiptForEdit.kho,
-      lyDo: receiptForEdit.lyDo || "Bán hàng",
+      lyDo: receiptForEdit.lyDo || EXPORT_REASON_SALE,
     });
 
     if (receiptForEdit.warehouseId) {
@@ -711,6 +751,11 @@ export default function XuatKho() {
         );
         return;
       }
+    }
+
+    if (hasAssetLines && formData.lyDo === EXPORT_REASON_SALE) {
+      showToast("Tài sản không áp dụng lý do xuất bán. Vui lòng chọn cấp phát hoặc chuyển nội bộ.", "error");
+      return;
     }
 
     const currentReceiptStatus = normalizeReceiptStatus(
@@ -801,6 +846,11 @@ export default function XuatKho() {
   };
 
   const handleConfirmReceipt = (receipt: Receipt) => {
+    if (!canApprove()) {
+      showToast("Bạn không có quyền xác nhận phiếu xuất", "error");
+      return;
+    }
+
     if (isReceiptConfirmed(receipt.trangThai)) {
       showToast("Phiếu này đã được xác nhận", "success");
       return;
@@ -1030,11 +1080,40 @@ export default function XuatKho() {
     totalValue: receipts.reduce((sum, r) => sum + (r.tongTien || 0), 0),
   };
 
+  const pageTitle = view === "list" ? "Phiếu xuất kho" : view === "create" ? "Tạo phiếu xuất" : "Sửa phiếu xuất";
+  const breadcrumbAction = view === "list" ? (
+    <button
+      onClick={() => {
+        resetForm();
+        setView("create");
+      }}
+      className="module-primary-btn inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white transition-all duration-200 shadow-sm"
+    >
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+      </svg>
+      Thêm Phiếu Xuất
+    </button>
+  ) : (
+    <button
+      onClick={() => {
+        resetForm();
+        setView("list");
+      }}
+      className="module-ghost-btn inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800/70"
+    >
+      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+      </svg>
+      Quay Lại
+    </button>
+  );
+
   if (view === "list") {
     return (
       <>
-        <PageMeta title="Phiếu xuất kho" description="Quản lý phiếu xuất kho" />
-        <PageBreadcrumb pageTitle="Phiếu xuất kho" />
+        <PageMeta title={pageTitle} description="Quản lý phiếu xuất kho" />
+        <PageBreadcrumb pageTitle={pageTitle} action={breadcrumbAction} />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
           <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white dark:border-sky-500/30 dark:from-sky-500/10 dark:to-gray-900 p-4">
@@ -1101,28 +1180,6 @@ export default function XuatKho() {
                     />
                   </svg>
                   Export
-                </button>
-                <button
-                  onClick={() => {
-                    resetForm();
-                    setView("create");
-                  }}
-                  className="module-primary-btn inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white transition-all duration-200 shadow-sm"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M12 4v16m8-8H4"
-                    />
-                  </svg>
-                  Thêm Phiếu Xuất
                 </button>
               </div>
             </div>
@@ -1448,26 +1505,26 @@ export default function XuatKho() {
   if (view === "create" || view === "edit") {
     return (
       <>
-        <PageMeta
-          title={view === "create" ? "Tạo phiếu" : "Sửa phiếu"}
-          description="Form phiếu xuất kho"
-        />
-        <PageBreadcrumb
-          pageTitle={view === "create" ? "Tạo phiếu xuất" : "Sửa phiếu xuất"}
-        />
+        <PageMeta title={pageTitle} description="Form phiếu xuất kho" />
+        <PageBreadcrumb pageTitle={pageTitle} action={breadcrumbAction} />
 
-        <div className="module-view form-tone-sync module-surface rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03] p-6">
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              {view === "create"
-                ? "Tạo phiếu xuất mới"
-                : "Chỉnh sửa phiếu xuất"}
-            </h2>
+        <div className="module-view form-tone-sync module-surface rounded-[28px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-cyan-50/40 p-6 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-slate-900 dark:to-slate-900/70">
+          <div className="mb-6 flex flex-col gap-2 border-b border-slate-200 pb-5 dark:border-slate-800">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-white">
+                {view === "create"
+                  ? "Tạo phiếu xuất mới"
+                  : "Chỉnh sửa phiếu xuất"}
+              </h2>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                Nhập thông tin chứng từ, kho xuất và danh sách hàng hóa.
+              </p>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Số Phiếu
               </label>
               <input
@@ -1476,12 +1533,13 @@ export default function XuatKho() {
                 onChange={(e) =>
                   setFormData({ ...formData, soPhieu: e.target.value })
                 }
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Tự động sinh hoặc nhập số phiếu"
+                className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Ngày Tạo
               </label>
               <input
@@ -1490,12 +1548,12 @@ export default function XuatKho() {
                 onChange={(e) =>
                   setFormData({ ...formData, ngayTao: e.target.value })
                 }
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Người Nhận
               </label>
               <input
@@ -1504,28 +1562,30 @@ export default function XuatKho() {
                 onChange={(e) =>
                   setFormData({ ...formData, nguoiNhan: e.target.value })
                 }
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Nhập người nhận hàng"
+                className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Lý Do Xuất
               </label>
               <CustomSelect
                 value={formData.lyDo}
                 onChange={(value) => setFormData({ ...formData, lyDo: value })}
-                options={[
-                  { value: "Bán hàng", label: "Bán hàng" },
-                  { value: "Hỏng hóc", label: "Hỏng hóc" },
-                  { value: "Khác", label: "Khác" },
-                ]}
-                buttonClassName="w-full"
+                options={reasonOptions}
+                buttonClassName="h-[48px] w-full"
               />
+              {hasAssetLines && (
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Có tài sản trong phiếu: chỉ dùng lý do cấp phát/chuyển nội bộ.
+                </p>
+              )}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Kho
               </label>
               <div ref={warehouseDropdownRef} className="relative">
@@ -1556,7 +1616,7 @@ export default function XuatKho() {
                         ? formData.kho
                         : "Gõ tên hoặc mã kho..."
                     }
-                    className="w-full pl-9 pr-8 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="h-[48px] w-full rounded-xl border border-gray-200 bg-white pl-9 pr-9 text-sm text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                   />
                   {selectedWarehouseId && (
                     <button
@@ -1618,7 +1678,7 @@ export default function XuatKho() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Số Chứng Từ
               </label>
               <input
@@ -1627,20 +1687,28 @@ export default function XuatKho() {
                 onChange={(e) =>
                   setFormData({ ...formData, soChungTu: e.target.value })
                 }
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Nhập số chứng từ"
+                className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
               />
             </div>
           </div>
 
-          <div className="mb-8 p-4 lg:p-6 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/30">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
-              Thêm Hàng Hóa
-            </h3>
+          <div className="mb-8 rounded-[24px] border border-cyan-200 bg-white/90 p-4 shadow-sm backdrop-blur dark:border-cyan-500/20 dark:bg-slate-900/70 lg:p-6">
+            <div className="mb-5 flex items-center justify-between gap-3 border-b border-slate-200 pb-4 dark:border-slate-800">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                  Thêm Hàng Hóa
+                </h3>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                  Chọn vật tư, nhập số lượng và đơn giá để đưa vào phiếu xuất.
+                </p>
+              </div>
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
               <div className="md:col-span-2" ref={materialDropdownRef}>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                  Chọn Nguyên Liệu
+                <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                  Chọn Vật Tư
                 </label>
                 <div className="relative">
                   <div className="relative">
@@ -1671,9 +1739,9 @@ export default function XuatKho() {
                       placeholder={
                         materialInput.selectedMaterialId
                           ? `${materialInput.maHang} - ${materialInput.tenHang}`
-                          : "Gõ tên hoặc mã nguyên liệu để tìm..."
+                          : "Gõ tên hoặc mã vật tư để tìm..."
                       }
-                      className="w-full pl-9 pr-8 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="h-[48px] w-full rounded-xl border border-gray-200 bg-white pl-9 pr-9 text-sm text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                     />
                     {materialInput.selectedMaterialId && (
                       <button
@@ -1703,18 +1771,18 @@ export default function XuatKho() {
 
                   {materialInput.selectedMaterialId &&
                     !isMaterialDropdownOpen && (
-                      <div className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-500/15 border border-blue-200 dark:border-blue-500/30 rounded-md">
-                        <span className="text-xs font-medium text-blue-700 dark:text-blue-300">
+                      <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 dark:border-cyan-500/30 dark:bg-cyan-500/10">
+                        <span className="text-xs font-medium text-cyan-700 dark:text-cyan-300">
                           {materialInput.maHang} - {materialInput.tenHang}
                         </span>
                       </div>
                     )}
 
                   {isMaterialDropdownOpen && (
-                    <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    <div className="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
                       {filteredAvailableMaterials.length === 0 ? (
                         <div className="px-3 py-4 text-sm text-gray-500 dark:text-gray-400 text-center">
-                          Không tìm thấy nguyên liệu
+                          Không tìm thấy vật tư
                         </div>
                       ) : (
                         filteredAvailableMaterials.map((mat: any) => (
@@ -1743,6 +1811,9 @@ export default function XuatKho() {
                                 ({mat.unitName})
                               </span>
                             )}
+                            <span className="ml-2 text-[11px] text-gray-400 dark:text-gray-500">
+                              [{resolveMaterialItemType(mat) === "asset" ? "Tài sản" : "Nguyên liệu"}]
+                            </span>
                           </button>
                         ))
                       )}
@@ -1752,24 +1823,22 @@ export default function XuatKho() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
                   Đơn Vị
                 </label>
                 <input
                   type="text"
                   value={materialInput.donVi}
                   readOnly
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white cursor-not-allowed"
+                  className="h-[48px] w-full cursor-not-allowed rounded-xl border border-gray-200 bg-gray-100 px-3 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
                   placeholder={
-                    materialInput.selectedMaterialId
-                      ? ""
-                      : "Chọn nguyên liệu trước"
+                    materialInput.selectedMaterialId ? "" : "Chọn vật tư trước"
                   }
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
                   Số Lượng
                 </label>
                 <input
@@ -1781,12 +1850,12 @@ export default function XuatKho() {
                       soLuong: e.target.value,
                     })
                   }
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
                   Đơn Giá
                 </label>
                 <input
@@ -1798,15 +1867,15 @@ export default function XuatKho() {
                       donGia: e.target.value,
                     })
                   }
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                 />
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="mt-5 flex flex-wrap items-center gap-2">
               <button
                 onClick={handleAddMaterial}
-                className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                className="inline-flex items-center gap-2 rounded-full bg-cyan-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-cyan-600/20 transition hover:bg-cyan-700"
               >
                 <svg
                   className="w-4 h-4"
@@ -1921,12 +1990,12 @@ export default function XuatKho() {
           </div>
 
           {materials.length > 0 && (
-            <div className="mb-8 p-4 bg-blue-50 dark:bg-blue-500/10 rounded-lg border border-blue-200 dark:border-blue-500/20">
+            <div className="mb-8 rounded-2xl border border-cyan-200 bg-cyan-50/70 p-4 dark:border-cyan-500/20 dark:bg-cyan-500/10">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-blue-900 dark:text-blue-300">
+                <span className="text-sm font-medium text-cyan-900 dark:text-cyan-300">
                   Tổng Tiền:
                 </span>
-                <span className="text-lg font-bold text-blue-900 dark:text-blue-300">
+                <span className="text-lg font-bold text-cyan-900 dark:text-cyan-300">
                   {materials
                     .reduce((sum, m) => sum + m.soLuong * m.donGia, 0)
                     .toLocaleString("vi-VN")}
@@ -1936,10 +2005,10 @@ export default function XuatKho() {
             </div>
           )}
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3 border-t border-slate-200 pt-5 dark:border-slate-800">
             <button
               onClick={() => void handleSaveReceipt(RECEIPT_STATUS.DRAFT)}
-              className="module-primary-btn inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white transition-colors"
+              className="module-primary-btn inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-medium text-white transition-colors"
             >
               <svg
                 className="w-4 h-4"
@@ -1954,30 +2023,7 @@ export default function XuatKho() {
                   d="M5 13l4 4L19 7"
                 />
               </svg>
-              {view === "create" ? "Tạo Phiếu" : "Cập Nhật"}
-            </button>
-
-            <button
-              onClick={() => {
-                setView("list");
-                resetForm();
-              }}
-              className="module-secondary-btn inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-              Hủy
+              {view === "create" ? "Tạo Phiếu này" : "Cập Nhật Phiếu"}
             </button>
           </div>
         </div>
@@ -2066,7 +2112,8 @@ export default function XuatKho() {
                 )}
                 {!isReceiptDraft(selectedReceipt.trangThai) &&
                   !isReceiptConfirmed(selectedReceipt.trangThai) &&
-                  !isReceiptCancelled(selectedReceipt.trangThai) && (
+                  !isReceiptCancelled(selectedReceipt.trangThai) &&
+                  canApprove() && (
                     <button
                       onClick={() => handleConfirmReceipt(selectedReceipt)}
                       aria-label="Xác nhận phiếu"

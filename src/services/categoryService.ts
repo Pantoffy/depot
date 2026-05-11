@@ -1,20 +1,16 @@
 import axios from "axios";
+import { createApiClient } from "./apiClient";
 
 // Interface matching Category model
 export interface Category {
   id: number;
   name: string;
   description?: string;
+  assetOnly?: boolean; // true = only for assets, false/undefined = only for materials
 }
 
 // Create axios instance with base configuration
-const apiClient = axios.create({
-  baseURL: "/api/Category",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  timeout: 10000,
-});
+const apiClient = createApiClient("/api/Category");
 
 // ====== KEYWORD-BASED AUTO-CLASSIFICATION ======
 // Bảng quy tắc: mỗi danh mục có danh sách từ khóa liên quan.
@@ -231,20 +227,41 @@ export function getCategoryKeywordRules(): CategoryKeywordRule[] {
   return CATEGORY_KEYWORD_RULES;
 }
 
+/**
+ * Lọc danh mục theo itemType.
+ * - itemType==="material": trả về danh mục cho nguyên liệu (assetOnly !== true)
+ * - itemType==="asset": trả về danh mục cho tài sản (assetOnly === true)
+ */
+export function getCategoriesByItemType(
+  categories: Category[],
+  itemType: "material" | "asset" | "goods"
+): Category[] {
+  if (itemType === "asset") {
+    return categories.filter((cat) => cat.assetOnly === true);
+  }
+  // material and goods: show non-asset categories
+  return categories.filter((cat) => cat.assetOnly !== true);
+}
+
 // Danh sách danh mục mặc định (dùng khi API không khả dụng)
 export const DEFAULT_CATEGORIES: Category[] = [
-  { id: 1, name: "Thịt" },
-  { id: 2, name: "Hải sản" },
-  { id: 3, name: "Rau củ quả" },
-  { id: 4, name: "Gia vị" },
-  { id: 5, name: "Dầu mỡ" },
-  { id: 6, name: "Lương thực" },
-  { id: 7, name: "Sữa & Trứng" },
-  { id: 8, name: "Đồ uống" },
-  { id: 9, name: "Đồ khô" },
-  { id: 10, name: "Vật dụng" },
-  { id: 11, name: "Vệ sinh" },
-  { id: 12, name: "Tráng miệng" },
+  { id: 1, name: "Thịt", assetOnly: false },
+  { id: 2, name: "Hải sản", assetOnly: false },
+  { id: 3, name: "Rau củ quả", assetOnly: false },
+  { id: 4, name: "Gia vị", assetOnly: false },
+  { id: 5, name: "Dầu mỡ", assetOnly: false },
+  { id: 6, name: "Lương thực", assetOnly: false },
+  { id: 7, name: "Sữa & Trứng", assetOnly: false },
+  { id: 8, name: "Đồ uống", assetOnly: false },
+  { id: 9, name: "Đồ khô", assetOnly: false },
+  { id: 10, name: "Vật dụng", assetOnly: false },
+  { id: 11, name: "Vệ sinh", assetOnly: false },
+  { id: 12, name: "Tráng miệng", assetOnly: false },
+  // Asset-only categories
+  { id: 13, name: "Nội thất", assetOnly: true },
+  { id: 14, name: "Thiết bị", assetOnly: true },
+  { id: 15, name: "Công cụ", assetOnly: true },
+  { id: 16, name: "Cơ sở vật chất", assetOnly: true },
 ];
 
 // ====== API SERVICE ======

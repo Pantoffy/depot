@@ -1,4 +1,6 @@
 import axios from "axios";
+import { createApiClient } from "./apiClient";
+import type { ItemType } from "./itemTypeService";
 
 // Interface matching C# Material model
 export interface Material {
@@ -10,6 +12,7 @@ export interface Material {
   unitId: number;
   unitName: string;
   supplierId: number;
+  itemType?: ItemType;
   note?: string;
   status?: string;
   createdTime?: string;
@@ -21,13 +24,7 @@ export interface Material {
 
 // Create axios instance with base configuration
 // Sử dụng Vite proxy - request sẽ đi qua localhost:5173/api rồi proxy sang backend
-const apiClient = axios.create({
-  baseURL: "/api/Material",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  timeout: 10000,
-});
+const apiClient = createApiClient("/api/Material");
 
 export const materialService = {
   // GET all materials

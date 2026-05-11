@@ -1,4 +1,5 @@
 import axios from "axios";
+import { createApiClient } from "./apiClient";
 
 // Interface matching C# StockCheckDetail model
 export interface StockCheckDetail {
@@ -59,13 +60,7 @@ export interface StockCheckTeam {
 
 // Create axios instance with base configuration
 // Sử dụng Vite proxy - request sẽ đi qua localhost:5173/api rồi proxy sang backend
-const apiClient = axios.create({
-    baseURL: "/api/Stock",
-    headers: {
-        "Content-Type": "application/json",
-    },
-    timeout: 10000,
-});
+const apiClient = createApiClient("/api/Stock");
 
 export const stockService = {
     // ==================== StockCheck Methods ====================

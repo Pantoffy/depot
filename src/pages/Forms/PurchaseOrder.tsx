@@ -1,16 +1,18 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Flatpickr from "react-flatpickr";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import CustomSelect from "../../components/common/CustomSelect";
 import Pagination from "../../components/common/Pagination";
 import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
+import { FormInput, FormDatePicker, FormTextarea } from "../../components/form";
 import { materialService, type Material } from "../../services/materialService";
+import { hydrateMaterialsItemType, resolveMaterialItemType } from "../../services/itemTypeService";
 import { supplierService, type Supplier } from "../../services/supplierService";
 import { unitService } from "../../services/unitService";
+import { notificationService } from "../../services/notificationService";
 import {
   purchaseOrderService,
   type PurchaseOrder,
@@ -51,16 +53,19 @@ type UiOrder = {
 const STATUS_DRAFT = "Đang soạn thảo";
 const STATUS_PENDING = "Chờ xác nhận";
 const STATUS_CONFIRMED = "Đã xác nhận";
+const STATUS_CANCELLED = "Đã hủy";
 const STATUS_DELIVERED = "Đã giao hàng";
 type PurchaseOrderStatusLabel =
   | typeof STATUS_DRAFT
   | typeof STATUS_PENDING
   | typeof STATUS_CONFIRMED
+  | typeof STATUS_CANCELLED
   | typeof STATUS_DELIVERED;
 const STATUS_OPTIONS = [
   STATUS_DRAFT,
   STATUS_PENDING,
   STATUS_CONFIRMED,
+  STATUS_CANCELLED,
   STATUS_DELIVERED,
 ] as const;
 
@@ -131,6 +136,9 @@ const getStatusClass = (status: string): string => {
   }
   if (normalized === STATUS_CONFIRMED) {
     return "status-confirmed";
+  }
+  if (normalized === STATUS_CANCELLED) {
+    return "status-cancelled";
   }
   return "status-pending";
 };
@@ -251,15 +259,19 @@ export default function PurchaseOrderPage() {
   const loadData = async (): Promise<void> => {
     try {
       setLoading(true);
-      const [materials, suppliers, units] = await Promise.all([
+      const [materialsResponse, suppliers, units] = await Promise.all([
         materialService.getAllMaterials(),
         supplierService.getAllSuppliers(),
         unitService.getAllUnits(),
       ]);
-      setAvailableMaterials(materials || []);
+      const hydratedMaterials = hydrateMaterialsItemType(materialsResponse || []);
+      const poMaterials = hydratedMaterials.filter(
+        (material) => resolveMaterialItemType(material) === "material",
+      );
+      setAvailableMaterials(poMaterials);
       setAvailableSuppliers(suppliers || []);
       setAvailableUnits(units || []);
-      await refreshOrders(materials || [], suppliers || [], units || []);
+      await refreshOrders(hydratedMaterials || [], suppliers || [], units || []);
     } catch {
       showToast("Không thể tải dữ liệu đơn đặt hàng", "error");
     } finally {
@@ -521,6 +533,158 @@ export default function PurchaseOrderPage() {
     });
   };
 
+  const handleConfirmOrder = async (order: UiOrder): Promise<void> => {
+    if (normalizeOrderStatus(order.status) !== STATUS_PENDING) {
+      showToast("Chỉ phiếu chờ xác nhận mới có thể được xác nhận", "warning");
+      return;
+    }
+
+    const payload: Omit<PurchaseOrder, "id" | "createdAt"> = {
+      code: order.code,
+      poNumber: order.poNumber,
+      orderDate: order.orderDate,
+      supplierId: order.supplierId,
+      expectedDeliveryDate: order.expectedDeliveryDate || null,
+      status: STATUS_CONFIRMED,
+      note: order.note,
+      totalAmount: order.totalAmount,
+      purchaseOrderDetails: order.details.map((item) => ({
+        purchaseOrderId: order.id,
+        materialId: item.materialId,
+        unitId: item.unitId,
+        quantity: item.soLuong,
+        unitPrice: item.donGia,
+        amount: item.soLuong * item.donGia,
+        note: item.ghiChu,
+      })),
+    };
+
+    showConfirm({
+      message: "Bạn có chắc muốn xác nhận đơn hàng này?",
+      onConfirm: async () => {
+        try {
+          setLoading(true);
+          await purchaseOrderService.updatePurchaseOrder(order.id, payload);
+          await refreshOrders();
+          if (selectedOrder?.id === order.id) {
+            setSelectedOrder({ ...order, status: STATUS_CONFIRMED });
+          }
+          showToast("Đã xác nhận đơn hàng", "success");
+        } catch {
+          showToast("Xác nhận đơn hàng thất bại", "error");
+        } finally {
+          setLoading(false);
+        }
+      },
+    });
+  };
+
+  const handleCancelOrder = async (order: UiOrder): Promise<void> => {
+    const currentStatus = normalizeOrderStatus(order.status);
+    if (currentStatus === STATUS_DELIVERED) {
+      showToast("Không thể hủy đơn hàng đã giao", "warning");
+      return;
+    }
+
+    showConfirm({
+      message: "Bạn có chắc muốn hủy đơn hàng này?",
+      onConfirm: async () => {
+        try {
+          setLoading(true);
+          const payload: Omit<PurchaseOrder, "id" | "createdAt"> = {
+            code: order.code,
+            poNumber: order.poNumber,
+            orderDate: order.orderDate,
+            supplierId: order.supplierId,
+            expectedDeliveryDate: order.expectedDeliveryDate || null,
+            status: STATUS_CANCELLED,
+            note: order.note,
+            totalAmount: order.totalAmount,
+            purchaseOrderDetails: order.details.map((item) => ({
+              purchaseOrderId: order.id,
+              materialId: item.materialId,
+              unitId: item.unitId,
+              quantity: item.soLuong,
+              unitPrice: item.donGia,
+              amount: item.soLuong * item.donGia,
+              note: item.ghiChu,
+            })),
+          };
+          await purchaseOrderService.updatePurchaseOrder(order.id, payload);
+          await refreshOrders();
+          if (selectedOrder?.id === order.id) {
+            setSelectedOrder({ ...order, status: STATUS_CANCELLED });
+          }
+          showToast("Đã hủy đơn hàng", "success");
+        } catch {
+          showToast("Hủy đơn hàng thất bại", "error");
+        } finally {
+          setLoading(false);
+        }
+      },
+    });
+  };
+
+  const handleMarkAsDelivered = async (order: UiOrder): Promise<void> => {
+    if (normalizeOrderStatus(order.status) !== STATUS_CONFIRMED) {
+      showToast("Chỉ phiếu đã xác nhận mới có thể đánh dấu là đã giao", "warning");
+      return;
+    }
+
+    showConfirm({
+      message: "Bạn có chắc muốn đánh dấu đơn hàng này là đã giao?",
+      onConfirm: async () => {
+        try {
+          setLoading(true);
+          const payload: Omit<PurchaseOrder, "id" | "createdAt"> = {
+            code: order.code,
+            poNumber: order.poNumber,
+            orderDate: order.orderDate,
+            supplierId: order.supplierId,
+            expectedDeliveryDate: order.expectedDeliveryDate || null,
+            status: STATUS_DELIVERED,
+            note: order.note,
+            totalAmount: order.totalAmount,
+            purchaseOrderDetails: order.details.map((item) => ({
+              purchaseOrderId: order.id,
+              materialId: item.materialId,
+              unitId: item.unitId,
+              quantity: item.soLuong,
+              unitPrice: item.donGia,
+              amount: item.soLuong * item.donGia,
+              note: item.ghiChu,
+            })),
+          };
+          await purchaseOrderService.updatePurchaseOrder(order.id, payload);
+
+          // Create notification
+          try {
+            await notificationService.createNotification({
+              type: "purchase_order",
+              title: `Đơn hàng ${order.code} đã giao xong`,
+              message: `Đơn hàng ${order.code} từ nhà cung cấp ${order.supplierName} đã được đánh dấu là đã giao với tổng giá trị ${order.totalAmount.toLocaleString("vi-VN")}₫`,
+              icon: "truck",
+              priority: "high",
+            });
+          } catch (notifyError) {
+            console.error("Error creating notification:", notifyError);
+            // Continue even if notification fails
+          }
+
+          await refreshOrders();
+          if (selectedOrder?.id === order.id) {
+            setSelectedOrder({ ...order, status: STATUS_DELIVERED });
+          }
+          showToast("Đã đánh dấu đơn hàng là đã giao. Thông báo được gửi.", "success");
+        } catch {
+          showToast("Không thể cập nhật trạng thái đơn hàng", "error");
+        } finally {
+          setLoading(false);
+        }
+      },
+    });
+  };
+
   const filteredOrders = useMemo(() => {
     return orders
       .filter((o) => {
@@ -565,6 +729,30 @@ export default function PurchaseOrderPage() {
     setCurrentPage(1);
   }, [searchTerm, statusFilter, sortBy, sortOrder]);
 
+  const pageTitle = view === "list" ? "Đơn đặt hàng" : view === "create" ? "Tạo đơn đặt hàng" : "Cập nhật đơn đặt hàng";
+  const breadcrumbAction = view === "list" ? (
+    <button
+      onClick={openCreateForm}
+      className="module-primary-btn inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white transition-all duration-200 shadow-sm"
+    >
+      Thêm Đơn Hàng
+    </button>
+  ) : (
+    <button
+      onClick={() => {
+        resetForm();
+        setSelectedOrder(null);
+        setView("list");
+      }}
+      className="module-ghost-btn inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800/70"
+    >
+      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+      </svg>
+      Quay Lại
+    </button>
+  );
+
   if (view === "create" || view === "edit") {
     const total = lineItems.reduce((sum, i) => sum + i.soLuong * i.donGia, 0);
     const selectedSupplierForForm = availableSuppliers.find(
@@ -593,94 +781,55 @@ export default function PurchaseOrderPage() {
 
     return (
       <div className="module-view space-y-4">
-        <PageMeta
-          title={
-            view === "create" ? "Tạo đơn đặt hàng" : "Chỉnh sửa đơn đặt hàng"
-          }
-          description="Form đơn đặt hàng"
-        />
-        <PageBreadcrumb
-          pageTitle={
-            view === "create" ? "Tạo đơn đặt hàng" : "Cập nhật đơn đặt hàng"
-          }
-        />
+        <PageMeta title={pageTitle} description="Form đơn đặt hàng" />
+        <PageBreadcrumb pageTitle={pageTitle} action={breadcrumbAction} />
 
-        <div className="form-tone-sync module-surface rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03] p-6">
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+        <div className="form-tone-sync module-surface rounded-[28px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-cyan-50/40 p-6 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-slate-900 dark:to-slate-900/70">
+          <div className="mb-6 flex flex-col gap-2 border-b border-slate-200 pb-5 dark:border-slate-800">
+            <h2 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-white">
               {view === "create"
                 ? "Tạo đơn đặt hàng mới"
                 : "Chỉnh sửa đơn đặt hàng"}
             </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Nhập thông tin đơn hàng và danh sách hàng hóa cần đặt
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+              Nhập thông tin đơn hàng, nhà cung cấp và danh sách hàng hóa cần đặt
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <Input
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 mb-8">
+            <FormInput
               label="Mã đơn"
               value={formData.code}
-              onChange={(v) => setFormData({ ...formData, code: v })}
+              onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+              required
+              className="h-[48px]"
             />
-            <Input
+            <FormInput
               label="Số PO"
               value={formData.poNumber}
-              onChange={(v) => setFormData({ ...formData, poNumber: v })}
+              onChange={(e) => setFormData({ ...formData, poNumber: e.target.value })}
+              required
+              className="h-[48px]"
             />
-            <Input
+            <FormInput
               label="Ngày đặt"
               type="date"
               value={formData.orderDate}
-              onChange={(v) => setFormData({ ...formData, orderDate: v })}
+              onChange={(e) => setFormData({ ...formData, orderDate: e.target.value })}
+              className="h-[48px]"
             />
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Dự kiến giao
-              </label>
-              <div className="relative w-full flatpickr-wrapper">
-                <Flatpickr
-                  value={formData.expectedDeliveryDate}
-                  onChange={(selectedDates: Date[]) => {
-                    const selectedDate = selectedDates[0];
-                    setFormData({
-                      ...formData,
-                      expectedDeliveryDate: selectedDate
-                        ? selectedDate.toISOString().split("T")[0]
-                        : "",
-                    });
-                  }}
-                  options={{
-                    dateFormat: "Y-m-d",
-                    altInput: true,
-                    altFormat: "d/m/Y",
-                    disableMobile: true,
-                    altInputClass:
-                      "po-expected-delivery-input w-full flatpickr-input",
-                  }}
-                  placeholder="Chọn ngày dự kiến giao"
-                  className="hidden"
-                />
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center h-7 w-7 rounded-md text-blue-700 bg-blue-100 dark:text-blue-300 dark:bg-blue-500/20 pointer-events-none">
-                  <svg
-                    className="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M8 7V3m8 4V3m-9 8h10m-13 9h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v11a2 2 0 002 2z"
-                    />
-                  </svg>
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Nhấn vào ô ngày để mở lịch nhanh
-              </p>
-            </div>
+            <FormDatePicker
+              label="Dự kiến giao"
+              value={formData.expectedDeliveryDate}
+              onChange={(val) =>
+                setFormData({
+                  ...formData,
+                  expectedDeliveryDate: val,
+                })
+              }
+              placeholder="Chọn ngày dự kiến giao"
+              displayFormat="d/m/Y"
+            />
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -715,7 +864,7 @@ export default function PurchaseOrderPage() {
                           selectedSupplierForForm.code
                         : "Gõ tên hoặc mã nhà cung cấp..."
                     }
-                    className="w-full pl-10 pr-9 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 pl-10 pr-9 text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder-gray-500"
                   />
                   {formData.supplierId && (
                     <button
@@ -744,7 +893,7 @@ export default function PurchaseOrderPage() {
                 </div>
 
                 {isSupplierDropdownOpen && (
-                  <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                  <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg max-h-60 overflow-y-auto">
                     {filteredSuppliers.length === 0 ? (
                       <div className="px-3 py-4 text-sm text-gray-500 dark:text-gray-400 text-center">
                         Không tìm thấy nhà cung cấp
@@ -757,9 +906,9 @@ export default function PurchaseOrderPage() {
                           onClick={() =>
                             handleSelectSupplier(String(supplier.id || ""))
                           }
-                          className={`w-full text-left px-3 py-2.5 text-sm hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-0 ${
+                          className={`w-full text-left px-3 py-2.5 text-sm hover:bg-cyan-50 dark:hover:bg-cyan-500/10 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-0 ${
                             formData.supplierId === String(supplier.id || "")
-                              ? "bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300"
+                              ? "bg-cyan-50 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-300"
                               : "text-gray-900 dark:text-white"
                           }`}
                         >
@@ -777,28 +926,31 @@ export default function PurchaseOrderPage() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Ghi chú
-              </label>
-              <textarea
+              <FormTextarea
+                label="Ghi chú"
                 value={formData.note}
-                onChange={(e) =>
-                  setFormData({ ...formData, note: e.target.value })
+                onChange={(val) =>
+                  setFormData({ ...formData, note: val })
                 }
                 rows={3}
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Nhập ghi chú..."
               />
             </div>
           </div>
 
-          <div className="mb-8 p-4 lg:p-6 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/30">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
-              Thêm Hàng Hóa
-            </h3>
+          <div className="mb-8 rounded-[24px] border border-cyan-200 bg-white/90 p-4 shadow-sm backdrop-blur dark:border-cyan-500/20 dark:bg-slate-900/70 lg:p-6">
+            <div className="mb-4 flex flex-col gap-2 border-b border-cyan-100 pb-4 dark:border-cyan-500/20">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                Thêm Hàng Hóa
+              </h3>
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                Thêm các hàng hóa cần đặt mua vào danh sách
+              </p>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
               <div className="md:col-span-2" ref={materialDropdownRef}>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Nguyên liệu
                 </label>
                 <div className="relative">
@@ -829,7 +981,7 @@ export default function PurchaseOrderPage() {
                           ? `${selectedMaterialForInput.code} - ${selectedMaterialForInput.name}`
                           : "Gõ tên hoặc mã nguyên liệu..."
                       }
-                      className="w-full pl-10 pr-9 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 pl-10 pr-9 text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder-gray-500"
                     />
                     {lineInput.materialId && (
                       <button
@@ -858,7 +1010,7 @@ export default function PurchaseOrderPage() {
                   </div>
 
                   {isMaterialDropdownOpen && (
-                    <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg max-h-60 overflow-y-auto">
                       {filteredMaterials.length === 0 ? (
                         <div className="px-3 py-4 text-sm text-gray-500 dark:text-gray-400 text-center">
                           Không tìm thấy nguyên liệu
@@ -871,9 +1023,9 @@ export default function PurchaseOrderPage() {
                             onClick={() =>
                               handleSelectMaterial(String(material.id || ""))
                             }
-                            className={`w-full text-left px-3 py-2.5 text-sm hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-0 ${
+                            className={`w-full text-left px-3 py-2.5 text-sm hover:bg-cyan-50 dark:hover:bg-cyan-500/10 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-0 ${
                               lineInput.materialId === String(material.id || "")
-                                ? "bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300"
+                                ? "bg-cyan-50 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-300"
                                 : "text-gray-900 dark:text-white"
                             }`}
                           >
@@ -896,19 +1048,19 @@ export default function PurchaseOrderPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Đơn vị
                 </label>
                 <input
                   type="text"
                   value={lineInput.unitName}
                   readOnly
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white cursor-not-allowed"
+                  className="h-[48px] w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-gray-900 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 cursor-not-allowed"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Số lượng
                 </label>
                 <input
@@ -917,12 +1069,12 @@ export default function PurchaseOrderPage() {
                   onChange={(e) =>
                     setLineInput({ ...lineInput, soLuong: e.target.value })
                   }
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder-gray-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Đơn giá
                 </label>
                 <input
@@ -931,13 +1083,13 @@ export default function PurchaseOrderPage() {
                   onChange={(e) =>
                     setLineInput({ ...lineInput, donGia: e.target.value })
                   }
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder-gray-500"
                 />
               </div>
             </div>
 
             <div className="mb-4">
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Ghi chú dòng hàng
               </label>
               <input
@@ -946,14 +1098,14 @@ export default function PurchaseOrderPage() {
                 onChange={(e) =>
                   setLineInput({ ...lineInput, ghiChu: e.target.value })
                 }
-                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder-gray-500"
               />
             </div>
 
             <button
               type="button"
               onClick={handleAddLine}
-              className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+              className="inline-flex items-center gap-2 rounded-full bg-cyan-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-cyan-600/20 transition hover:bg-cyan-700"
             >
               <svg
                 className="w-4 h-4"
@@ -1070,24 +1222,24 @@ export default function PurchaseOrderPage() {
           </div>
 
           {lineItems.length > 0 && (
-            <div className="mb-8 p-4 bg-blue-50 dark:bg-blue-500/10 rounded-lg border border-blue-200 dark:border-blue-500/20">
+            <div className="mb-8 rounded-2xl border border-cyan-200 bg-cyan-50/70 p-4 dark:border-cyan-500/20 dark:bg-cyan-500/10">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-blue-900 dark:text-blue-300">
+                <span className="text-sm font-medium text-cyan-900 dark:text-cyan-300">
                   Tổng Tiền:
                 </span>
-                <span className="text-lg font-bold text-blue-900 dark:text-blue-300">
+                <span className="text-lg font-bold text-cyan-900 dark:text-cyan-300">
                   {total.toLocaleString("vi-VN")}₫
                 </span>
               </div>
             </div>
           )}
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3 border-t border-slate-200 pt-5 dark:border-slate-800">
             <button
               type="button"
               onClick={() => void handleSaveOrder()}
               disabled={loading}
-              className="module-primary-btn inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+              className="module-primary-btn inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-medium text-white disabled:opacity-50"
             >
               <svg
                 className="w-4 h-4"
@@ -1110,9 +1262,9 @@ export default function PurchaseOrderPage() {
                 setView("list");
                 resetForm();
               }}
-              className="module-secondary-btn inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600"
+              className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-5 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
             >
-              Hủy
+              Quay Lại
             </button>
           </div>
         </div>
@@ -1195,6 +1347,52 @@ export default function PurchaseOrderPage() {
                     </svg>
                   </button>
                 )}
+                {normalizeOrderStatus(selectedOrder.status) === STATUS_PENDING && (
+                  <button
+                    type="button"
+                    onClick={() => void handleConfirmOrder(selectedOrder)}
+                    aria-label="Xác nhận đơn hàng"
+                    title="Xác nhận đơn hàng"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white transition-colors hover:bg-emerald-700"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  </button>
+                )}
+                {normalizeOrderStatus(selectedOrder.status) === STATUS_CONFIRMED && (
+                  <button
+                    type="button"
+                    onClick={() => void handleMarkAsDelivered(selectedOrder)}
+                    aria-label="Đánh dấu đã giao"
+                    title="Đánh dấu đã giao"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-teal-600 text-white transition-colors hover:bg-teal-700"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => openEditForm(selectedOrder)}
@@ -1216,6 +1414,29 @@ export default function PurchaseOrderPage() {
                     />
                   </svg>
                 </button>
+                {normalizeOrderStatus(selectedOrder.status) !== STATUS_CANCELLED && (
+                  <button
+                    type="button"
+                    onClick={() => void handleCancelOrder(selectedOrder)}
+                    aria-label="Hủy đơn hàng"
+                    title="Hủy đơn hàng"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gray-700 text-white transition-colors hover:bg-gray-800"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => handleDeleteOrder(selectedOrder.id)}
@@ -1521,8 +1742,8 @@ export default function PurchaseOrderPage() {
 
   return (
     <div className="module-view space-y-5">
-      <PageBreadcrumb pageTitle="Đơn đặt hàng" />
-      <PageMeta title="Đơn đặt hàng" description="Quản lý đơn đặt hàng" />
+      <PageBreadcrumb pageTitle={pageTitle} action={breadcrumbAction} />
+      <PageMeta title={pageTitle} description="Quản lý đơn đặt hàng" />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white dark:border-sky-500/30 dark:from-sky-500/10 dark:to-gray-900 p-4">
@@ -1578,12 +1799,6 @@ export default function PurchaseOrderPage() {
                 className="module-secondary-btn inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
               >
                 Export
-              </button>
-              <button
-                onClick={openCreateForm}
-                className="module-primary-btn inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white transition-all duration-200 shadow-sm"
-              >
-                Thêm Đơn Hàng
               </button>
             </div>
           </div>
@@ -1862,45 +2077,6 @@ export default function PurchaseOrderPage() {
           labelPrefix="Hien thi"
         />
       </div>
-    </div>
-  );
-}
-
-type InputProps = {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type?: "text" | "date" | "number";
-};
-
-function Input({ label, value, onChange, type = "text" }: InputProps) {
-  const openDatePicker = (
-    event: React.MouseEvent<HTMLInputElement> | React.FocusEvent<HTMLInputElement>,
-  ) => {
-    if (type !== "date") {
-      return;
-    }
-    const input = event.currentTarget;
-    const isDarkMode = document.documentElement.classList.contains("dark");
-    input.style.colorScheme = isDarkMode ? "dark" : "light";
-    if (typeof input.showPicker === "function") {
-      input.showPicker();
-    }
-  };
-
-  return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-        {label}
-      </label>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onClick={openDatePicker}
-        onFocus={openDatePicker}
-        className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-      />
     </div>
   );
 }

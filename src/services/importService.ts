@@ -1,4 +1,5 @@
 import axios from "axios";
+import { createApiClient } from "./apiClient";
 
 const extractErrorMessage = (error: unknown, fallback: string) => {
   if (!axios.isAxiosError(error)) {
@@ -104,13 +105,7 @@ export interface ImportReceiptDetail {
 
 // Create axios instance with base configuration
 // Sử dụng Vite proxy - request sẽ đi qua localhost:5173/api rồi proxy sang backend
-const apiClient = axios.create({
-  baseURL: "/api/ImportReceipt",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  timeout: 10000,
-});
+const apiClient = createApiClient("/api/ImportReceipt");
 
 export const importService = {
   // GET all import receipts

@@ -20,30 +20,39 @@ type NavItem = {
 };
 
 const navItems: NavItem[] = [
-{
+  {
     icon: <GridIcon />,
-    name: "Tổng quan", path: "/",
+    name: "Tổng quan",
+    path: "/",
   },
   {
     name: "Hoạt động kho",
-    icon: <ListIcon />,
+    icon: <HorizontaLDots/>,
     subItems: [
-      { name: "Đơn đặt hàng", path: "/don-dat-hang", pro: false },
-      { name: "Nhập kho", path: "/nhap-kho", pro: false },
-      { name: "Xuất kho", path: "/xuat-kho", pro: false },
-      { name: "Kiểm kê", path: "/kiem-ke", pro: false },
-    ],    
+      { name: "Đơn đặt hàng", path: "/don-dat-hang" },
+      { name: "Nhập kho", path: "/nhap-kho" },
+      { name: "Xuất kho", path: "/xuat-kho" },
+      { name: "Kiểm kê", path: "/kiem-ke" },
+      { name: "Báo cáo XNT", path: "/bao-cao-xuat-nhap-ton" },
+    ],
   },
   {
     name: "Quản lý dữ liệu",
     icon: <BoxCubeIcon />,
     subItems: [
-      { name: "Danh mục nguyên liệu", path: "/quan-ly-nguyen-lieu", pro: false },
-      { name: "Nhà cung cấp", path: "/quan-ly-nha-cung-cap", pro: false },
-      { name: "Quản lý kho", path: "/quan-ly-kho", pro: false },
-      { name: "Quản lý tồn kho", path: "/ton-kho-theo-kho", pro: false },
+      { name: "Vật tư", path: "/quan-ly-nguyen-lieu" },
+      { name: "Nhà cung cấp", path: "/quan-ly-nha-cung-cap" },
+      { name: "Quản lý kho", path: "/quan-ly-kho" },
     ],
   },
+
+  // ✅ NEW MENU
+  {
+    name: "Tồn kho",
+    icon: <ListIcon />, // đổi icon nếu muốn
+    path: "/ton-kho-theo-kho",
+  },
+
   {
     icon: <CalenderIcon />,
     name: "Lịch",
