@@ -1,5 +1,6 @@
 "use client";
 
+import { Search, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
@@ -8,10 +9,11 @@ import Pagination from "../../components/common/Pagination";
 import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
 import { FormInput, FormDatePicker } from "../../components/form";
-import { stockService, type StockCheck } from "../../services/stockService";
+import { stockService } from "../../services/stockService";
 import { warehouseService, type Warehouse } from "../../services/warehouseService";
 import { materialService, type Material } from "../../services/materialService";
 import { inventoryService, type InventoryItem } from "../../services/inventoryService";
+import { useAuth } from "../../context/AuthContext";
 
 const ActionDropdown = ({
   onView,
@@ -86,7 +88,10 @@ type StockCheckReceipt = {
   ngayTao: string;
   nguoiTao: string;
   tongVatTu: number;
-  trangThai: "Nháp" | "Đã trình";
+  trangThai: "Nháp" | "Đã trình" | "Đã duyệt" | "Đã hủy";
+  createdBy?: string;
+  approvedBy?: string;
+  approvedAt?: string;
   teamMembers?: TeamMember[];
   assets?: AssetRow[];
   endDate?: string;
@@ -122,6 +127,8 @@ export default function KiemKe() {
   const location = useLocation();
   const navigate = useNavigate();
   const { receiptId } = useParams<{ receiptId?: string }>();
+  const { canApprove, hasRole } = useAuth();
+  const canSubmitOrCancel = () => hasRole("Nhân viên kho") || hasRole("Quản lý kho") || hasRole("Admin");
 
   const resolveViewByPath = (pathname: string): "list" | "create" | "detail" => {
     if (pathname === "/kiem-ke/tao-moi") {
@@ -146,6 +153,9 @@ export default function KiemKe() {
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [originalDetailIds, setOriginalDetailIds] = useState<number[]>([]);
+  const [originalTeamIds, setOriginalTeamIds] = useState<number[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [selectedWarehouseIds, setSelectedWarehouseIds] = useState<number[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
@@ -157,7 +167,7 @@ export default function KiemKe() {
     warehouseId: 0,
     startDate: new Date().toISOString().split("T")[0],
     endDate: "",
-    status: "Pending",
+    status: "Nháp",
   });
 
   const [teamTabMode, setTeamTabMode] = useState<"select" | "create">("select");
@@ -293,8 +303,17 @@ export default function KiemKe() {
         khoKiemKe: item.warehouse?.name || 'Chưa chọn kho',
         ngayTao: item.startDate?.split('T')[0] || new Date().toISOString().split('T')[0],
         nguoiTao: item.createdBy || 'Chưa cập nhật',
+        createdBy: item.createdBy || '',
+        approvedBy: item.approvedBy || '',
+        approvedAt: item.approvedAt || '',
         tongVatTu: item.stockCheckDetails?.length || 0,
-        trangThai: (item.status === 'Pending' ? 'Nháp' : 'Đã trình') as 'Nháp' | 'Đã trình',
+        trangThai: (
+          item.status === 'Nháp' ? 'Nháp'
+          : item.status === 'Đã trình' ? 'Đã trình'
+          : item.status === 'Đã duyệt' ? 'Đã duyệt'
+          : item.status === 'Đã hủy' ? 'Đã hủy'
+          : 'Nháp'
+        ) as 'Nháp' | 'Đã trình' | 'Đã duyệt' | 'Đã hủy',
         endDate: item.endDate?.split('T')[0] || '',
         note: item.note || '',
         teamMembers: (item.teams || []).map((team) => ({
@@ -415,13 +434,15 @@ export default function KiemKe() {
 
   const receiptSummary = useMemo(() => {
     const draftCount = receipts.filter((r) => r.trangThai === "Nháp").length;
-    const submittedCount = receipts.filter((r) => r.trangThai === "Đã trình").length;
+    const pendingCount = receipts.filter((r) => r.trangThai === "Đã trình").length;
+    const approvedCount = receipts.filter((r) => r.trangThai === "Đã duyệt").length;
     const totalAssets = receipts.reduce((sum, r) => sum + r.tongVatTu, 0);
 
     return {
       total: receipts.length,
       draftCount,
-      submittedCount,
+      pendingCount,
+      approvedCount,
       totalAssets,
     };
   }, [receipts]);
@@ -668,52 +689,111 @@ export default function KiemKe() {
       showToast("Vui lòng chọn ít nhất một kho kiểm kê", "warning");
       return;
     }
+    if (teamMembers.length === 0) {
+      showToast("Phiếu kiểm phải có ít nhất một đội kiểm", "warning");
+      return;
+    }
+    if (assetRows.filter((r) => r.materialId).length === 0) {
+      showToast("Phiếu kiểm phải có ít nhất một chi tiết vật tư", "warning");
+      return;
+    }
     
     setIsSaving(true);
     try {
-      for (const warehouseId of selectedWarehouseIds) {
-        const stockCheckData: Omit<StockCheck, "id" | "createdTime"> = {
-          code: selectedWarehouseIds.length > 1 ? `${generatedCode}-K${warehouseId}` : generatedCode,
+      if (editingId) {
+        // ── EDIT MODE ──
+        await stockService.updateStockCheck(editingId, {
+          code: generatedCode,
           name: formData.name.trim() || "Chưa đặt tên phiếu",
-          warehouseId,
+          warehouseId: selectedWarehouseIds[0] || 0,
           startDate: formData.startDate,
           endDate: formData.endDate,
-          status: "Pending",
-        };
+          status: formData.status || "Nháp",
+        } as any);
 
-        const createdStockCheck = await stockService.createStockCheck(stockCheckData);
+        // Delete then re-add details
+        for (const detailId of originalDetailIds) {
+          await stockService.deleteStockDetail(editingId, detailId);
+        }
+        for (const asset of assetRows.filter((r) => r.materialId)) {
+          await stockService.createStockDetail({
+            stockCheckId: editingId,
+            materialId: asset.materialId!,
+            warehouseId: asset.warehouseId || selectedWarehouseIds[0],
+            systemQuantity: asset.systemQty,
+            actualQuantity: asset.checkQty,
+            handlingProposal: asset.handlingProposal || "",
+            recordedCheck: asset.recordedCheck ?? true,
+            status: asset.status || "Chưa xử lý",
+          });
+        }
 
-        if (createdStockCheck.id && assetRows.length > 0) {
-          for (const asset of assetRows.filter((row) => row.warehouseId === warehouseId)) {
-            if (!asset.materialId) continue;
-            await stockService.createStockDetail({
-              stockCheckId: createdStockCheck.id,
-              materialId: asset.materialId,
+        // Delete then re-add teams
+        for (const teamId of originalTeamIds) {
+          await stockService.deleteStockTeam(editingId, teamId);
+        }
+        for (const member of teamMembers) {
+          await stockService.createStockTeam(editingId, {
+            name: member.name,
+            role: member.role,
+            note: member.note || "",
+          });
+        }
+
+        showToast("Đã cập nhật phiếu kiểm kê thành công", "success");
+      } else {
+        // ── CREATE MODE ──
+        for (const warehouseId of selectedWarehouseIds) {
+          const relevantAssets = assetRows.filter((row) => row.materialId);
+          const stockCheckData = {
+            code: selectedWarehouseIds.length > 1 ? `${generatedCode}-K${warehouseId}` : generatedCode,
+            name: formData.name.trim() || "Chưa đặt tên phiếu",
+            warehouseId,
+            startDate: formData.startDate,
+            endDate: formData.endDate,
+            status: "Nháp",
+            stockCheckDetails: relevantAssets.map((asset) => ({
+              stockCheckId: 0,
+              materialId: asset.materialId!,
               warehouseId,
               systemQuantity: asset.systemQty,
               actualQuantity: asset.checkQty,
-              handlingProposal: asset.handlingProposal,
-            });
-          }
-        }
-
-        if (createdStockCheck.id && teamMembers.length > 0) {
-          for (const member of teamMembers) {
-            await stockService.createStockTeam(createdStockCheck.id, {
+              handlingProposal: asset.handlingProposal || "",
+              recordedCheck: asset.recordedCheck,
+              status: asset.status || "",
+            })),
+            teams: teamMembers.map((member) => ({
+              stockCheckId: 0,
               name: member.name,
               role: member.role,
-              note: member.note,
-            });
-          }
+              note: member.note || "",
+            })),
+          };
+          await stockService.createStockCheck(stockCheckData as any);
         }
+        showToast("Đã lập phiếu kiểm kê thành công", "success");
       }
 
-      showToast("Đã lưu phiếu kiểm kê nháp", "success");
       navigate("/kiem-ke");
-      await loadStockChecks(); // Reload data
+      await loadStockChecks();
     } catch (error) {
       console.error("Error saving draft:", error);
-      showToast("Lỗi lưu phiếu kiểm kê", "error");
+      // Extract actual error message from API response
+      const axiosErr = error as { response?: { data?: { message?: string; errors?: Record<string, string[]> }; status?: number } };
+      if (axiosErr?.response?.data) {
+        const data = axiosErr.response.data;
+        if (data.errors) {
+          // ModelState errors
+          const msgs = Object.values(data.errors).flat().join("; ");
+          showToast(`Lỗi: ${msgs}`, "error");
+        } else if (data.message) {
+          showToast(`Lỗi: ${data.message}`, "error");
+        } else {
+          showToast(`Lỗi server ${axiosErr.response.status}`, "error");
+        }
+      } else {
+        showToast("Lỗi lưu phiếu kiểm kê", "error");
+      }
     } finally {
       setIsSaving(false);
     }
@@ -730,7 +810,7 @@ export default function KiemKe() {
           warehouseId: stockCheck.warehouseId || 0,
           startDate: stockCheck.startDate?.split("T")[0] || receipt.ngayTao,
           endDate: stockCheck.endDate?.split("T")[0] || receipt.endDate || "",
-          status: stockCheck.status || (receipt.trangThai === "Nháp" ? "Pending" : "Approved"),
+          status: stockCheck.status || (receipt.trangThai === "Nháp" ? "Nháp" : "Đã duyệt"),
         });
         setSelectedWarehouseIds(stockCheck.warehouseId ? [stockCheck.warehouseId] : []);
 
@@ -765,9 +845,16 @@ export default function KiemKe() {
           discrepancyType: "Tất cả",
           warehouse: "",
         });
+        setEditingId(Number(receipt.id));
+        setOriginalDetailIds(
+          (stockCheck.stockCheckDetails || []).map((d) => d.id!).filter(Boolean)
+        );
+        setOriginalTeamIds(
+          (stockCheck.teams || []).map((t) => t.id!).filter(Boolean)
+        );
         setView("create");
         navigate("/kiem-ke/tao-moi");
-        showToast("Đã nạp dữ liệu phiếu từ API vào biểu mẫu", "success");
+        showToast("Đã nạp dữ liệu phiếu để chỉnh sửa", "success");
       } catch (error) {
         console.error("Error loading stock check for edit:", error);
         showToast("Không thể tải dữ liệu phiếu kiểm kê từ API", "error");
@@ -786,11 +873,14 @@ export default function KiemKe() {
       warehouseId: 0,
       startDate: new Date().toISOString().split("T")[0],
       endDate: "",
-      status: "Pending",
+      status: "Nháp",
     });
     setSelectedWarehouseIds([]);
     setTeamMembers([]);
     setAssetRows([]);
+    setEditingId(null);
+    setOriginalDetailIds([]);
+    setOriginalTeamIds([]);
     setView("create");
     navigate("/kiem-ke/tao-moi");
   };
@@ -814,6 +904,83 @@ export default function KiemKe() {
     });
   };
 
+  const handleSubmitStockCheck = (receipt: StockCheckReceipt) => {
+    if (!canSubmitOrCancel()) {
+      showToast("Bạn không có quyền gửi phiếu", "warning");
+      return;
+    }
+    if (receipt.trangThai !== "Nháp") {
+      showToast("Chỉ phiếu Nháp mới có thể gửi xác nhận", "warning");
+      return;
+    }
+    showConfirm({
+      message: "Gửi phiếu kiểm kê sang trạng thái Đã trình?",
+      okText: "Gửi",
+      cancelText: "Hủy",
+      onConfirm: async () => {
+        try {
+          await stockService.updateStockCheck(Number(receipt.id), { status: "Đã trình" } as any);
+          await loadStockChecks();
+          showToast("Đã gửi phiếu, trạng thái: Đã trình", "success");
+        } catch (error) {
+          const axiosErr = error as { response?: { data?: { message?: string } } };
+          const msg = axiosErr?.response?.data?.message || "Lỗi khi gửi phiếu";
+          showToast(msg, "error");
+        }
+      },
+    });
+  };
+
+  const handleApproveStockCheck = (receipt: StockCheckReceipt) => {
+    if (!canApprove()) {
+      showToast("Bạn không có quyền duyệt phiếu", "warning");
+      return;
+    }
+    showConfirm({
+      message: "Duyệt phiếu kiểm kê này?",
+      okText: "Duyệt",
+      cancelText: "Hủy",
+      onConfirm: async () => {
+        try {
+          await stockService.updateStockCheck(Number(receipt.id), { status: "Đã duyệt" } as any);
+          await loadStockChecks();
+          showToast("Đã duyệt phiếu kiểm kê", "success");
+        } catch (error) {
+          const axiosErr = error as { response?: { data?: { message?: string } } };
+          const msg = axiosErr?.response?.data?.message || "Lỗi khi duyệt phiếu";
+          showToast(msg, "error");
+        }
+      },
+    });
+  };
+
+  const handleCancelStockCheck = (receipt: StockCheckReceipt) => {
+    if (!canSubmitOrCancel()) {
+      showToast("Bạn không có quyền hủy phiếu", "warning");
+      return;
+    }
+    if (receipt.trangThai === "Đã hủy") {
+      showToast("Phiếu này đã được hủy", "warning");
+      return;
+    }
+    showConfirm({
+      message: "Bạn có chắc muốn hủy phiếu kiểm kê này?",
+      okText: "Hủy phiếu",
+      cancelText: "Không",
+      onConfirm: async () => {
+        try {
+          await stockService.updateStockCheck(Number(receipt.id), { status: "Đã hủy" } as any);
+          await loadStockChecks();
+          showToast("Đã hủy phiếu kiểm kê", "success");
+        } catch (error) {
+          const axiosErr = error as { response?: { data?: { message?: string } } };
+          const msg = axiosErr?.response?.data?.message || "Lỗi khi hủy phiếu";
+          showToast(msg, "error");
+        }
+      },
+    });
+  };
+
   const handleSelectAll = () => {
     if (selectedItems.length === paginatedReceipts.length) {
       setSelectedItems([]);
@@ -831,6 +998,13 @@ export default function KiemKe() {
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('vi-VN', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
+  const getStockCheckStatusClass = (status: string) => {
+    if (status === "Đã duyệt") return "status-confirmed";
+    if (status === "Đã trình") return "status-submitted";
+    if (status === "Đã hủy") return "status-cancelled";
+    return "status-draft";
   };
 
   const handleExportReceipts = () => {
@@ -936,7 +1110,7 @@ export default function KiemKe() {
   const breadcrumbAction = view === "list" ? (
     <button
       onClick={handleCreateNew}
-      className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-all duration-200 shadow-sm"
+      className="module-primary-btn inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white transition-all duration-200"
     >
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
@@ -977,11 +1151,11 @@ export default function KiemKe() {
             </div>
             <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4 dark:border-amber-500/30 dark:from-amber-500/10 dark:to-gray-900">
               <p className="text-xs font-medium text-amber-700 dark:text-amber-300">Đã trình</p>
-              <p className="mt-2 text-2xl font-semibold text-amber-900 dark:text-amber-200">{receiptSummary.submittedCount}</p>
+              <p className="mt-2 text-2xl font-semibold text-amber-900 dark:text-amber-200">{receiptSummary.pendingCount}</p>
             </div>
             <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-4 dark:border-indigo-500/30 dark:from-indigo-500/10 dark:to-gray-900">
-              <p className="text-xs font-medium text-indigo-700 dark:text-indigo-300">Tổng vật tư</p>
-              <p className="mt-2 text-2xl font-semibold text-indigo-900 dark:text-indigo-200">{receiptSummary.totalAssets}</p>
+              <p className="text-xs font-medium text-indigo-700 dark:text-indigo-300">Đã duyệt</p>
+              <p className="mt-2 text-2xl font-semibold text-indigo-900 dark:text-indigo-200">{receiptSummary.approvedCount}</p>
             </div>
           </div>
 
@@ -1001,7 +1175,7 @@ export default function KiemKe() {
                 <div className="flex items-center gap-3">
                   <button
                     onClick={handleExportReceipts}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -1016,15 +1190,13 @@ export default function KiemKe() {
             <div className="p-5 lg:p-6 border-b border-gray-200 dark:border-gray-800 overflow-visible">
               <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
                 <div className="relative w-full sm:w-72">
-                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
                     placeholder="Tìm kiếm..."
                     value={receiptSearchTerm}
                     onChange={(e) => { setReceiptSearchTerm(e.target.value); setCurrentPage(1); }}
-                    className="h-11 w-full pl-10 px-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    className="h-[48px] w-full pl-10 px-4 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent shadow-sm transition-all duration-200"
                   />
                 </div>
                 
@@ -1032,11 +1204,9 @@ export default function KiemKe() {
                   <button
                     type="button"
                     onClick={() => setIsFilterOpen(!isFilterOpen)}
-                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
+                    className="inline-flex items-center gap-2 h-[48px] px-4 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200 shadow-sm"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                    </svg>
+                    <SlidersHorizontal className="w-4 h-4" />
                     Bộ lọc
                   </button>
 
@@ -1053,7 +1223,7 @@ export default function KiemKe() {
                               Trạng Thái
                             </label>
                             <div className="space-y-1">
-                              {["Tất cả", "Nháp", "Đã trình"].map(status => (
+                              {["Tất cả", "Nháp", "Đã trình", "Đã duyệt", "Đã hủy"].map(status => (
                                 <label key={status} className="flex items-center gap-2 p-1 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer">
                                   <input
                                     type="radio"
@@ -1086,34 +1256,34 @@ export default function KiemKe() {
             {isLoading ? (
               <div className="flex items-center justify-center py-16">
                 <div className="text-center">
-                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+                  <div className="inline-block h-10 w-10 animate-spin rounded-full border-4 border-gray-100 border-t-cyan-500 dark:border-gray-800 mb-4"></div>
                   <p className="text-gray-600 dark:text-gray-400">Đang tải dữ liệu...</p>
                 </div>
               </div>
             ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200 dark:border-gray-800">
-                    <th className="px-5 py-4 text-left">
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="module-table w-full text-sm">
+                <thead className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                  <tr>
+                    <th className="px-5 py-3 text-left">
                       <input 
                         type="checkbox" 
                         checked={selectedItems.length === paginatedReceipts.length && paginatedReceipts.length > 0}
                         onChange={handleSelectAll}
-                        className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-800"
+                        className="w-4 h-4 rounded border-gray-200 dark:border-gray-700 text-cyan-600 focus:ring-cyan-500 dark:bg-gray-900"
                       />
                     </th>
-                    <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Mã phiếu</th>
-                    <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tên phiếu</th>
-                    <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Kho</th>
-                    <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Người tạo</th>
-                    <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Ngày tạo</th>
-                    <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tổng VLC</th>
-                    <th className="px-5 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Trạng thái</th>
-                    <th className="px-5 py-4"></th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Mã phiếu</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Tên phiếu</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Kho</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Người tạo</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Ngày tạo</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Tổng VLC</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Trạng thái</th>
+                    <th className="px-6 py-3"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {paginatedReceipts.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="py-16 text-center">
@@ -1134,56 +1304,52 @@ export default function KiemKe() {
                     paginatedReceipts.map((receipt) => (
                       <tr 
                         key={receipt.id}
-                        className="hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors"
+                        className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                       >
                         <td className="px-5 py-4">
                           <input 
                             type="checkbox" 
                             checked={selectedItems.includes(receipt.id)}
                             onChange={() => handleSelectItem(receipt.id)}
-                            className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-800"
+                            className="w-4 h-4 rounded border-gray-200 dark:border-gray-700 text-cyan-600 focus:ring-cyan-500 dark:bg-gray-900"
                           />
                         </td>
-                        <td className="px-5 py-4">
-                          <p className="font-medium text-gray-900 dark:text-white text-sm">
+                        <td className="px-6 py-4">
+                          <p className="font-mono text-xs font-bold tracking-tight text-gray-900 dark:text-white">
                             {receipt.maPhieu}
                           </p>
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="px-6 py-4">
                           <span className="text-sm text-gray-600 dark:text-gray-400">
                             {receipt.tenPhieu}
                           </span>
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="px-6 py-4">
                           <span className="text-sm text-gray-600 dark:text-gray-400">
                             {receipt.khoKiemKe}
                           </span>
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="px-6 py-4">
                           <span className="text-sm text-gray-600 dark:text-gray-400">
                             {receipt.nguoiTao}
                           </span>
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="px-6 py-4">
                           <span className="text-sm text-gray-600 dark:text-gray-400">
                             {formatDate(receipt.ngayTao)}
                           </span>
                         </td>
-                        <td className="px-5 py-4">
-                          <span className="text-sm font-medium text-gray-900 dark:text-white">
+                        <td className="px-6 py-4">
+                          <span className="text-sm font-semibold text-gray-900 dark:text-white">
                             {receipt.tongVatTu}
                           </span>
                         </td>
-                        <td className="px-5 py-4">
-                          <span className={`inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-medium ${
-                            receipt.trangThai === "Nháp"
-                              ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                              : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                          }`}>
+                        <td className="px-6 py-4">
+                          <span className={`status-pill ${getStockCheckStatusClass(receipt.trangThai)}`}>
                             {receipt.trangThai}
                           </span>
                         </td>
-                        <td className="px-5 py-4 text-right">
+                        <td className="px-6 py-4 text-right">
                           <ActionDropdown
                             onView={() => handleViewReceipt(receipt)}
                             onEdit={() => handleOpenReceipt(receipt)}
@@ -1223,30 +1389,16 @@ export default function KiemKe() {
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-100">Warehouse Stock Check</p>
-                  <h1 className="mt-1 text-2xl font-bold text-white sm:text-3xl">Tạo phiếu kiểm kê mới</h1>
+                  <h1 className="mt-1 text-2xl font-bold text-white sm:text-3xl">
+                    {editingId ? "Chỉnh sửa phiếu kiểm kê" : "Tạo phiếu kiểm kê mới"}
+                  </h1>
                   <p className="mt-2 max-w-2xl text-sm text-cyan-100">
-                    Khởi tạo phiếu, gán tổ kiểm kê và ghi nhận số liệu chênh lệch trên cùng một màn hình trực quan.
+                    {editingId
+                      ? `Đang chỉnh sửa phiếu #${editingId}. Cập nhật thông tin và nhấn "Đồng ý" để lưu.`
+                      : "Khởi tạo phiếu, gán tổ kiểm kê và ghi nhận số liệu chênh lệch trên cùng một màn hình trực quan."}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2.5 md:justify-end">
-                  <button
-                    onClick={handleSaveDraft}
-                    className="inline-flex items-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm font-semibold text-cyan-700 transition hover:bg-cyan-50"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                    </svg>
-                    Lập phiếu
-                  </button>
-                  {/* <button
-                    onClick={handleCreateRequest}
-                    className="inline-flex items-center gap-2 rounded-lg border border-white/50 bg-amber-500 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-amber-400"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
-                    Soạn thảo tờ trình
-                  </button> */}
                   <button
                     onClick={() => navigate("/kiem-ke")}
                     className="inline-flex items-center gap-2 rounded-lg border border-white/40 bg-white/10 px-3.5 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/20"
@@ -1392,7 +1544,7 @@ export default function KiemKe() {
                   placeholder="Nhập tên phiếu"
                 />
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Kho kiểm kê</label>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Kho kiểm kê</label>
                   <CustomMultiSelect
                     values={selectedWarehouseIds.map(String)}
                     onChange={(values) => {
@@ -1478,7 +1630,7 @@ export default function KiemKe() {
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-3 md:items-end">
                         {/* Staff Selection Input */}
                         <div className="relative md:col-span-2">
-                          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Chọn người từ danh sách</label>
+                          <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Chọn người từ danh sách</label>
                           <CustomSelect
                             value={memberInput.name}
                             onChange={(value) => setMemberInput((p) => ({ ...p, name: value }))}
@@ -1648,7 +1800,7 @@ export default function KiemKe() {
                       value={assetFilter.keyword}
                       onChange={(e) => setAssetFilter((p) => ({ ...p, keyword: e.target.value }))}
                       placeholder="Tìm kiếm mã hoặc tên vật tư"
-                      className="h-11 w-full rounded-lg border border-gray-300 bg-white pl-10 px-4 py-2.5 text-sm text-gray-900 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                      className="h-[48px] w-full rounded-xl border border-gray-200 bg-white pl-10 px-4 text-sm text-gray-900 shadow-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                     />
                   </div>
 
@@ -1829,6 +1981,36 @@ export default function KiemKe() {
               </div>
             </div>
           </div>
+
+          {/* Bottom action bar */}
+          <div className="flex items-center justify-end gap-3 rounded-2xl border border-cyan-100 bg-cyan-50/60 px-5 py-4 dark:border-cyan-900/30 dark:bg-cyan-950/20">
+            <button
+              onClick={() => navigate("/kiem-ke")}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+              </svg>
+              Quay lại danh sách
+            </button>
+            <button
+              onClick={handleSaveDraft}
+              disabled={isSaving}
+              className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-700 disabled:opacity-60"
+            >
+              {isSaving ? (
+                <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+              ) : (
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+              {isSaving ? "Đang lưu..." : editingId ? "Đồng ý" : "Lập phiếu"}
+            </button>
+          </div>
         </div>
       )}
 
@@ -1866,24 +2048,121 @@ export default function KiemKe() {
                     <span className={`inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ${
                       activeReceipt.trangThai === "Nháp"
                         ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-                        : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                        : activeReceipt.trangThai === "Đã trình"
+                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                        : activeReceipt.trangThai === "Đã duyệt"
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                        : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
                     }`}>
                       {activeReceipt.trangThai}
                     </span>
-                    <button
-                      onClick={() => handleOpenReceipt(activeReceipt)}
-                      className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-600"
-                    >
-                      Mở biểu mẫu chỉnh sửa
-                    </button>
+                    <div className="flex items-center gap-2 rounded-xl border border-white/70 bg-white/70 p-2 backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/70">
+                      {/* Gửi xác nhận: chỉ Nháp + có quyền */}
+                      {activeReceipt.trangThai === "Nháp" && canSubmitOrCancel() && (
+                        <button
+                          onClick={() => handleSubmitStockCheck(activeReceipt)}
+                          aria-label="Gửi xác nhận"
+                          title="Gửi xác nhận"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white transition-colors hover:bg-blue-700"
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
+                      )}
+                      {/* Duyệt: chỉ Đã trình + canApprove */}
+                      {activeReceipt.trangThai === "Đã trình" && canApprove() && (
+                        <button
+                          onClick={() => handleApproveStockCheck(activeReceipt)}
+                          aria-label="Duyệt phiếu"
+                          title="Duyệt phiếu"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white transition-colors hover:bg-emerald-700"
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
+                      )}
+                      {/* Hủy: không áp dụng khi Đã hủy + có quyền */}
+                      {activeReceipt.trangThai !== "Đã hủy" && canSubmitOrCancel() && (
+                        <button
+                          onClick={() => handleCancelStockCheck(activeReceipt)}
+                          aria-label="Hủy phiếu"
+                          title="Hủy phiếu"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gray-700 text-white transition-colors hover:bg-gray-800"
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                      {/* Chỉnh sửa: chỉ Nháp */}
+                      {activeReceipt.trangThai === "Nháp" && (
+                        <button
+                          onClick={() => handleOpenReceipt(activeReceipt)}
+                          aria-label="Chỉnh sửa"
+                          title="Chỉnh sửa"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500 text-white transition-colors hover:bg-amber-600"
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                      )}
+                      {/* Xóa: chỉ Nháp */}
+                      {activeReceipt.trangThai === "Nháp" && (
+                        <button
+                          onClick={() => handleDeleteReceipt(activeReceipt.id)}
+                          aria-label="Xóa phiếu"
+                          title="Xóa phiếu"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-600 text-white transition-colors hover:bg-red-700"
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <DetailStat label="Số dòng tài sản" value={`${detailAssets.length}`} />
-                  <DetailStat label="SL hệ thống" value={detailTotalSystemQty.toLocaleString("vi-VN")} />
-                  <DetailStat label="SL kiểm kê" value={detailTotalCheckQty.toLocaleString("vi-VN")} />
-                  <DetailStat label="Dòng chênh lệch" value={`${detailDiscrepancyRows}`} />
+                  <div className="rounded-xl border border-sky-200 bg-white/80 p-4 backdrop-blur-sm dark:border-sky-500/30 dark:bg-sky-500/10">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-sky-700 dark:text-sky-300">Số dòng tài sản</p>
+                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300">
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xl font-semibold text-sky-900 dark:text-sky-100">{detailAssets.length}</p>
+                  </div>
+                  <div className="rounded-xl border border-indigo-200 bg-white/80 p-4 backdrop-blur-sm dark:border-indigo-500/30 dark:bg-indigo-500/10">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-indigo-700 dark:text-indigo-300">SL hệ thống</p>
+                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7h18M6 11h12m-9 4h6" /></svg>
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xl font-semibold text-indigo-900 dark:text-indigo-100">{detailTotalSystemQty.toLocaleString("vi-VN")}</p>
+                  </div>
+                  <div className="rounded-xl border border-emerald-200 bg-white/80 p-4 backdrop-blur-sm dark:border-emerald-500/30 dark:bg-emerald-500/10">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">SL kiểm kê</p>
+                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xl font-semibold text-emerald-900 dark:text-emerald-100">{detailTotalCheckQty.toLocaleString("vi-VN")}</p>
+                  </div>
+                  <div className="rounded-xl border border-amber-200 bg-white/80 p-4 backdrop-blur-sm dark:border-amber-500/30 dark:bg-amber-500/10">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">Dòng chênh lệch</p>
+                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v12m-4-8h8" /></svg>
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xl font-semibold text-amber-900 dark:text-amber-100">{detailDiscrepancyRows}</p>
+                  </div>
                 </div>
               </div>
 
@@ -1895,6 +2174,12 @@ export default function KiemKe() {
                     <DetailStat label="Ngày tạo" value={formatDate(activeReceipt.ngayTao)} />
                     <DetailStat label="Ngày kết thúc" value={activeReceipt.endDate ? formatDate(activeReceipt.endDate) : "-"} />
                     <DetailStat label="Người tạo" value={activeReceipt.nguoiTao || "-"} />
+                    {activeReceipt.approvedBy && (
+                      <DetailStat label="Xác nhận bởi" value={activeReceipt.approvedBy} />
+                    )}
+                    {activeReceipt.approvedAt && (
+                      <DetailStat label="Thời gian xác nhận" value={new Date(activeReceipt.approvedAt).toLocaleString("vi-VN")} />
+                    )}
                   </div>
                   {activeReceipt.note && (
                     <div className="mb-4 rounded-lg bg-blue-50 p-4 dark:bg-blue-900/20">
@@ -1948,9 +2233,41 @@ export default function KiemKe() {
                 <div className="space-y-3 lg:sticky lg:top-4 lg:self-start">
                   <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 dark:border-gray-700 dark:from-white/5 dark:to-gray-800/30">
                     <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Thông tin</p>
-                    <DetailStat label="Tổng chênh lệch" value={detailTotalDiscrepancy >= 0 ? `+${detailTotalDiscrepancy}` : `${detailTotalDiscrepancy}`} />
-                    <div className="mt-2" />
-                    <DetailStat label="Số thành viên tổ kiểm kê" value={`${detailTeamMembers.length}`} />
+                    <div className="text-xs space-y-1 mb-3">
+                      <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-amber-50 dark:bg-amber-500/10">
+                        <span className="text-amber-700 dark:text-amber-300">Tổng chênh lệch:</span>
+                        <span className={`font-medium ${detailTotalDiscrepancy >= 0 ? "text-blue-900 dark:text-blue-100" : "text-red-900 dark:text-red-100"}`}>
+                          {detailTotalDiscrepancy >= 0 ? `+${detailTotalDiscrepancy}` : `${detailTotalDiscrepancy}`}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-blue-50 dark:bg-blue-500/10">
+                        <span className="text-blue-700 dark:text-blue-300">Thành viên kiểm kê:</span>
+                        <span className="font-medium text-blue-900 dark:text-blue-100">{detailTeamMembers.length}</span>
+                      </div>
+                    </div>
+                    
+                    {(activeReceipt?.createdBy || activeReceipt?.approvedBy || activeReceipt?.approvedAt) && (
+                      <div className="mt-3 space-y-1 pt-3 border-t border-gray-200 dark:border-gray-700 text-xs">
+                        {activeReceipt?.createdBy && (
+                          <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-purple-50 dark:bg-purple-500/10">
+                            <span className="text-purple-700 dark:text-purple-300">Người tạo:</span>
+                            <span className="font-medium text-purple-900 dark:text-purple-100">{activeReceipt.createdBy}</span>
+                          </div>
+                        )}
+                        {activeReceipt?.approvedBy && (
+                          <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-green-50 dark:bg-green-500/10">
+                            <span className="text-green-700 dark:text-green-300">Xác nhận bởi:</span>
+                            <span className="font-medium text-green-900 dark:text-green-100">{activeReceipt.approvedBy}</span>
+                          </div>
+                        )}
+                        {activeReceipt?.approvedAt && (
+                          <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-indigo-50 dark:bg-indigo-500/10">
+                            <span className="text-indigo-700 dark:text-indigo-300">Ngày xác nhận:</span>
+                            <span className="font-medium text-indigo-900 dark:text-indigo-100">{formatDate(activeReceipt.approvedAt)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-white/[0.03]">
@@ -2006,7 +2323,7 @@ export default function KiemKe() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Kho kiểm kê</label>
-                  <div className="h-11 w-full rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white flex items-center">
+                  <div className="h-[48px] w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white flex items-center shadow-sm">
                     {selectedWarehouseNames.length > 0 ? selectedWarehouseNames.join(", ") : "Chưa chọn kho"}
                   </div>
                 </div>
@@ -2020,7 +2337,7 @@ export default function KiemKe() {
                         onFocus={() => setIsMaterialDropdownOpen(true)}
                         onChange={(e) => handleMaterialSearchInputChange(e.target.value)}
                         placeholder="Nhập để tìm vật tư theo mã hoặc tên"
-                        className="h-11 w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 pr-10 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                        className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 text-sm text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                       />
                       <button
                         type="button"
@@ -2035,7 +2352,7 @@ export default function KiemKe() {
                     </div>
 
                     {isMaterialDropdownOpen && (
-                      <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-40 overflow-auto rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800">
+                      <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-40 overflow-auto rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800">
                         {filteredMaterialOptions.length === 0 ? (
                           <p className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">Không có vật tư thuộc kho đã chọn</p>
                         ) : (
@@ -2044,7 +2361,7 @@ export default function KiemKe() {
                               key={`${option.warehouseId}-${option.materialId}`}
                               type="button"
                               onClick={() => handleSelectMaterialFromWarehouse(option)}
-                              className="flex w-full items-start justify-between gap-2 border-b border-gray-100 px-3 py-2 text-left text-xs text-gray-700 hover:bg-blue-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-blue-900/20"
+                              className="flex w-full items-start justify-between gap-2 border-b border-gray-100 px-3 py-2 text-left text-xs text-gray-700 hover:bg-cyan-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-cyan-900/20"
                             >
                               <span>{option.code} - {option.name} ({option.warehouseName})</span>
                               <span className="text-gray-500 dark:text-gray-400">SL: {option.systemQty}</span>
@@ -2285,7 +2602,7 @@ function CustomSelect({
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  const sizeClass = size === "sm" ? "h-8 px-2 text-xs" : "h-10 px-3 text-sm";
+  const sizeClass = size === "sm" ? "h-8 px-2 text-xs" : "h-[48px] px-4 text-sm";
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -2306,7 +2623,7 @@ function CustomSelect({
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen((prev) => !prev)}
-        className={`flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white text-gray-900 shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white ${sizeClass} ${disabled ? "cursor-not-allowed opacity-60" : "hover:border-blue-400"}`}
+        className={`flex w-full items-center justify-between rounded-xl border border-cyan-200 bg-cyan-50 text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-cyan-700/50 dark:bg-cyan-950/20 dark:text-white ${sizeClass} ${disabled ? "cursor-not-allowed opacity-60" : "hover:border-cyan-300"}`}
       >
         <span className="truncate">{selectedOption?.label}</span>
         <svg
@@ -2320,7 +2637,7 @@ function CustomSelect({
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-lg border border-blue-100 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+        <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
           <ul className="max-h-56 overflow-auto py-1">
             {options.map((option) => {
               const isSelected = option.value === value;
@@ -2335,7 +2652,7 @@ function CustomSelect({
                     }}
                     className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors ${
                       isSelected
-                        ? "bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300"
+                        ? "bg-cyan-50 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-300"
                         : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
                     }`}
                   >
@@ -2392,30 +2709,19 @@ function CustomMultiSelect({
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className="flex w-full items-start justify-between gap-3 rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+        className="flex h-[48px] w-full items-center justify-between gap-3 rounded-xl border border-cyan-200 bg-cyan-50 px-4 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-sm placeholder-gray-400 dark:border-cyan-700/50 dark:bg-cyan-950/20 dark:text-white"
       >
         <div className="min-w-0 flex-1 text-left">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              Kho kiểm kê
-            </span>
-            {selectedLabels.length > 0 && (
-              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 dark:bg-blue-500/20 dark:text-blue-200">
-                {selectedLabels.length} đã chọn
-              </span>
-            )}
-          </div>
-
           {selectedLabels.length === 0 ? (
-            <span className="mt-1 block truncate text-sm text-gray-500 dark:text-gray-400" title={placeholder}>
+            <span className="block truncate text-sm text-gray-500 dark:text-gray-400" title={placeholder}>
               {placeholder}
             </span>
           ) : (
-            <div className="mt-2 flex flex-wrap gap-1.5" title={selectedLabels.join(", ")}>
+            <div className="flex flex-wrap gap-1.5" title={selectedLabels.join(", ")}>
               {selectedLabels.slice(0, 3).map((label) => (
                 <span
                   key={label}
-                  className="inline-flex max-w-full items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/15 dark:text-blue-200"
+                  className="inline-flex max-w-full items-center rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-medium text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/15 dark:text-cyan-200"
                 >
                   <span className="truncate">{label}</span>
                 </span>
@@ -2431,7 +2737,7 @@ function CustomMultiSelect({
         </div>
 
         <svg
-          className={`mt-1 h-4 w-4 shrink-0 text-gray-500 transition-transform dark:text-gray-300 ${isOpen ? "rotate-180" : ""}`}
+          className={`h-4 w-4 shrink-0 text-gray-500 transition-transform dark:text-gray-300 ${isOpen ? "rotate-180" : ""}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -2441,7 +2747,7 @@ function CustomMultiSelect({
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-lg border border-blue-100 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+        <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
           <ul className="max-h-56 overflow-auto py-1">
             {options.map((option) => {
               const isChecked = values.includes(option.value);
@@ -2452,7 +2758,7 @@ function CustomMultiSelect({
                     onClick={() => toggleValue(option.value)}
                     className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors ${
                       isChecked
-                        ? "bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300"
+                        ? "bg-cyan-50 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-300"
                         : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
                     }`}
                   >

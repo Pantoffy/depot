@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDownToLine, ArrowUpFromLine, ClipboardList, ShoppingCart } from "lucide-react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -26,11 +27,11 @@ type ActivityItem = {
   status?: string;
 };
 
-const summaryGlyphs: Record<SummaryType, string> = {
-  Import: "⇩",
-  Export: "⇧",
-  StockCheck: "▣",
-  PurchaseOrder: "▤",
+const summaryIcons: Record<SummaryType, React.ReactNode> = {
+  Import: <ArrowDownToLine size={16} />,
+  Export: <ArrowUpFromLine size={16} />,
+  StockCheck: <ClipboardList size={16} />,
+  PurchaseOrder: <ShoppingCart size={16} />,
 };
 
 interface SummaryEvent extends EventInput {
@@ -79,20 +80,36 @@ const formatTime = (dateValue?: string) => {
 };
 
 const statusBadgeClass = (status?: string) => {
-  const normalized = (status || "").toLowerCase();
-  if (normalized === "approved") {
-    return "bg-emerald-500/20 text-emerald-300 border border-emerald-400/30";
+  const s = (status || "").toLowerCase().trim();
+  if (s === "đã duyệt" || s === "approved" || s === "đã xác nhận" || s === "confirmed") {
+    return "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-500/20 dark:text-emerald-300 dark:ring-emerald-400/30";
   }
-  if (normalized === "pending") {
-    return "bg-amber-500/20 text-amber-300 border border-amber-400/30";
+  if (s === "đã giao" || s === "đã giao hàng" || s === "delivered") {
+    return "bg-blue-100 text-blue-700 ring-1 ring-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:ring-blue-400/30";
   }
-  return "bg-gray-500/20 text-gray-300 border border-gray-400/30";
+  if (s === "chờ xác nhận" || s === "đã trình" || s === "pending") {
+    return "bg-amber-100 text-amber-700 ring-1 ring-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-400/30";
+  }
+  if (s === "đã hủy" || s === "cancelled") {
+    return "bg-red-100 text-red-700 ring-1 ring-red-300 dark:bg-red-500/20 dark:text-red-300 dark:ring-red-400/30";
+  }
+  if (s === "nháp" || s === "đang soạn thảo" || s === "draft") {
+    return "bg-gray-100 text-gray-500 ring-1 ring-gray-300 dark:bg-slate-500/20 dark:text-slate-400 dark:ring-slate-500/30";
+  }
+  return "bg-gray-100 text-gray-400 ring-1 ring-gray-200 dark:bg-gray-700/30 dark:text-gray-400 dark:ring-gray-600/30";
 };
 
 const statusLabel = (status?: string) => {
-  const normalized = (status || "").toLowerCase();
-  if (normalized === "approved") return "Đã xác nhận";
-  if (normalized === "pending") return "Chờ xác nhận";
+  const s = (status || "").toLowerCase().trim();
+  if (s === "đã duyệt" || s === "approved" || s === "confirmed") return "Đã duyệt";
+  if (s === "đã xác nhận") return "Đã xác nhận";
+  if (s === "đã giao hàng") return "Đã giao hàng";
+  if (s === "đã giao" || s === "delivered") return "Đã giao";
+  if (s === "chờ xác nhận") return "Chờ xác nhận";
+  if (s === "đã trình" || s === "pending") return "Đã trình";
+  if (s === "đã hủy" || s === "cancelled") return "Đã hủy";
+  if (s === "đang soạn thảo" || s === "draft") return "Đang soạn thảo";
+  if (s === "nháp") return "Nháp";
   return status || "N/A";
 };
 
@@ -216,12 +233,12 @@ const Calendar: React.FC = () => {
 
         setDayDetailsByDate(grouped);
         setEvents(summaryEvents);
-        if (!grouped[selectedDateKey]) {
-          const firstDate = Object.keys(grouped).sort()[0];
-          if (firstDate) {
-            setSelectedDateKey(firstDate);
+        setSelectedDateKey((prev) => {
+          if (!grouped[prev]) {
+            return Object.keys(grouped).sort().reverse()[0] || prev;
           }
-        }
+          return prev;
+        });
       } catch (error) {
         console.error("Error loading calendar summary:", error);
       } finally {
@@ -230,7 +247,8 @@ const Calendar: React.FC = () => {
     };
 
     fetchCalendarData();
-  }, [selectedDateKey]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const selectDate = (dateKey: string) => {
     if (!dateKey) return;
@@ -297,32 +315,32 @@ const Calendar: React.FC = () => {
       key: "Import",
       label: "Nhập kho",
       value: selectedDayDetail.imports.length,
-      icon: summaryGlyphs.Import,
+      icon: summaryIcons.Import,
       className:
-        "border border-emerald-400/20 bg-emerald-500/10 text-emerald-200",
+        "border border-emerald-400/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200",
     },
     {
       key: "Export",
       label: "Xuất kho",
       value: selectedDayDetail.exports.length,
-      icon: summaryGlyphs.Export,
-      className: "border border-red-400/20 bg-red-500/10 text-red-200",
+      icon: summaryIcons.Export,
+      className: "border border-red-400/30 bg-red-500/10 text-red-700 dark:text-red-200",
     },
     {
       key: "StockCheck",
       label: "Kiểm kê",
       value: selectedDayDetail.stockChecks.length,
-      icon: summaryGlyphs.StockCheck,
+      icon: summaryIcons.StockCheck,
       className:
-        "border border-amber-400/20 bg-amber-500/10 text-amber-200",
+        "border border-amber-400/30 bg-amber-500/10 text-amber-700 dark:text-amber-200",
     },
     {
       key: "PurchaseOrder",
       label: "Đơn hàng",
       value: selectedDayDetail.purchaseOrders.length,
-      icon: summaryGlyphs.PurchaseOrder,
+      icon: summaryIcons.PurchaseOrder,
       className:
-        "border border-violet-400/20 bg-violet-500/10 text-violet-200",
+        "border border-violet-400/30 bg-violet-500/10 text-violet-700 dark:text-violet-200",
     },
   ];
 
@@ -338,7 +356,7 @@ const Calendar: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             Lịch kho hàng
           </h1>
-          <span className="inline-flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-medium text-cyan-300">
+          <span className="inline-flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-medium text-cyan-600 dark:text-cyan-300">
             Chọn ngày để xem chi tiết theo nhóm
           </span>
         </div>
@@ -346,19 +364,19 @@ const Calendar: React.FC = () => {
         <div className="flex flex-wrap gap-6 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-white/[0.02]">
           <div className="flex items-center gap-2">
             <div className="h-4 w-4 rounded bg-blue-500"></div>
-            <span className="text-sm text-gray-700 dark:text-gray-400">⇩ Nhập kho (summary)</span>
+            <span className="flex items-center gap-1 text-sm text-gray-700 dark:text-gray-400"><ArrowDownToLine size={14} /> Nhập kho</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="h-4 w-4 rounded bg-green-500"></div>
-            <span className="text-sm text-gray-700 dark:text-gray-400">⇧ Xuất kho (summary)</span>
+            <span className="flex items-center gap-1 text-sm text-gray-700 dark:text-gray-400"><ArrowUpFromLine size={14} /> Xuất kho</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="h-4 w-4 rounded bg-amber-500"></div>
-            <span className="text-sm text-gray-700 dark:text-gray-400">▣ Kiểm kê (summary)</span>
+            <span className="flex items-center gap-1 text-sm text-gray-700 dark:text-gray-400"><ClipboardList size={14} /> Kiểm kê</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="h-4 w-4 rounded bg-violet-500"></div>
-            <span className="text-sm text-gray-700 dark:text-gray-400">▤ Đơn hàng (summary)</span>
+            <span className="flex items-center gap-1 text-sm text-gray-700 dark:text-gray-400"><ShoppingCart size={14} /> Đơn hàng</span>
           </div>
           {isLoading && (
             <div className="ml-auto flex items-center gap-2">
@@ -369,7 +387,7 @@ const Calendar: React.FC = () => {
         </div>
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_560px]">
-          <div className="rounded-2xl border border-cyan-900/60 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 shadow-2xl shadow-cyan-900/20">
+          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-cyan-900/60 dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 dark:shadow-2xl dark:shadow-cyan-900/20">
             <div className="custom-calendar p-4 md:p-6">
               <FullCalendar
                 ref={calendarRef}
@@ -385,6 +403,14 @@ const Calendar: React.FC = () => {
                 dateClick={handleDateClick}
                 eventClick={handleEventClick}
                 eventContent={renderEventContent}
+                dayCellClassNames={(arg) => {
+                  const y = arg.date.getFullYear();
+                  const m = String(arg.date.getMonth() + 1).padStart(2, "0");
+                  const d = String(arg.date.getDate()).padStart(2, "0");
+                  return `${y}-${m}-${d}` === selectedDateKey
+                    ? ["fc-day-selected"]
+                    : [];
+                }}
                 dayMaxEvents={4}
                 dayMaxEventRows={4}
                 moreLinkClick="popover"
@@ -395,42 +421,42 @@ const Calendar: React.FC = () => {
             </div>
           </div>
 
-          <div className="activity-drawer rounded-2xl border border-cyan-900/60 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-2xl shadow-cyan-900/20 lg:p-5">
+          <div className="activity-drawer rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-cyan-900/60 dark:bg-gradient-to-b dark:from-slate-900 dark:to-slate-950 dark:shadow-2xl dark:shadow-cyan-900/20 lg:p-5">
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-xl font-semibold text-white">
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
                   Hoạt động ngày {formatViDate(selectedDateKey)}
                 </h3>
-                <p className="mt-1 text-xs text-slate-400">
+                <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
                   Chi tiết theo loại chứng từ trong ngày đã chọn
                 </p>
               </div>
             </div>
 
-            <div className="mb-4 grid grid-cols-3 gap-2">
+            <div className="mb-4 grid grid-cols-2 gap-2">
               {summaryCards.map((card) => (
                 <button
                   key={card.key}
                   type="button"
                   onClick={() => setActiveTab(card.key as SummaryType)}
                   className={`rounded-xl px-3 py-2 text-left transition ${card.className} ${
-                    activeTab === card.key ? "ring-1 ring-white/40" : "opacity-80 hover:opacity-100"
+                    activeTab === card.key ? "ring-1 ring-black/20 dark:ring-white/40" : "opacity-80 hover:opacity-100"
                   }`}
                 >
-                  <div className="text-lg font-semibold">{card.icon} {card.value}</div>
+                  <div className="flex items-center gap-1.5 text-lg font-semibold">{card.icon} {card.value}</div>
                   <div className="text-xs">{card.label}</div>
                 </button>
               ))}
             </div>
 
-            <div className="mb-3 flex gap-2 border-b border-slate-800 pb-2 text-sm">
+            <div className="mb-3 flex gap-2 border-b border-gray-200 pb-2 text-sm dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setActiveTab("Import")}
                 className={`rounded-lg px-3 py-1.5 ${
                   activeTab === "Import"
-                    ? "bg-cyan-500/15 text-cyan-300"
-                    : "text-slate-300 hover:bg-slate-800"
+                    ? "bg-cyan-500/15 text-cyan-600 dark:text-cyan-300"
+                    : "text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-slate-800"
                 }`}
               >
                 Nhập kho ({selectedDayDetail.imports.length})
@@ -440,8 +466,8 @@ const Calendar: React.FC = () => {
                 onClick={() => setActiveTab("Export")}
                 className={`rounded-lg px-3 py-1.5 ${
                   activeTab === "Export"
-                    ? "bg-cyan-500/15 text-cyan-300"
-                    : "text-slate-300 hover:bg-slate-800"
+                    ? "bg-cyan-500/15 text-cyan-600 dark:text-cyan-300"
+                    : "text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-slate-800"
                 }`}
               >
                 Xuất kho ({selectedDayDetail.exports.length})
@@ -451,8 +477,8 @@ const Calendar: React.FC = () => {
                 onClick={() => setActiveTab("StockCheck")}
                 className={`rounded-lg px-3 py-1.5 ${
                   activeTab === "StockCheck"
-                    ? "bg-cyan-500/15 text-cyan-300"
-                    : "text-slate-300 hover:bg-slate-800"
+                    ? "bg-cyan-500/15 text-cyan-600 dark:text-cyan-300"
+                    : "text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-slate-800"
                 }`}
               >
                 Kiểm kê ({selectedDayDetail.stockChecks.length})
@@ -462,8 +488,8 @@ const Calendar: React.FC = () => {
                 onClick={() => setActiveTab("PurchaseOrder")}
                 className={`rounded-lg px-3 py-1.5 ${
                   activeTab === "PurchaseOrder"
-                    ? "bg-cyan-500/15 text-cyan-300"
-                    : "text-slate-300 hover:bg-slate-800"
+                    ? "bg-cyan-500/15 text-cyan-600 dark:text-cyan-300"
+                    : "text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-slate-800"
                 }`}
               >
                 Đơn hàng ({selectedDayDetail.purchaseOrders.length})
@@ -476,35 +502,36 @@ const Calendar: React.FC = () => {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Tìm mã phiếu hoặc tên..."
-                className="h-10 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 text-sm text-slate-100 placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                className="h-10 w-full rounded-xl border border-gray-300 bg-white px-3 text-sm text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500"
               />
             </div>
 
-            <div className="custom-scrollbar max-h-[500px] overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/60">
-              <div className="grid grid-cols-[120px_minmax(0,1.4fr)_72px_110px] gap-2 border-b border-slate-800 px-3 py-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                <div>Mã</div>
+            <div className="custom-scrollbar max-h-[500px] overflow-y-auto rounded-xl border border-gray-200 bg-white dark:border-slate-800 dark:bg-slate-950/60">
+              <div className="sticky top-0 z-10 grid grid-cols-[130px_minmax(0,1fr)_64px_110px] border-b border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-500">
+                <div>Mã phiếu</div>
                 <div>Đối tượng</div>
                 <div>Giờ</div>
                 <div>Trạng thái</div>
               </div>
 
               {filteredItems.length === 0 ? (
-                <div className="px-4 py-8 text-center text-sm text-slate-400">
+                <div className="px-4 py-10 text-center text-sm text-gray-400 dark:text-slate-500">
                   Không có dữ liệu phù hợp.
                 </div>
               ) : (
                 filteredItems.map((item, index) => (
                   <div
                     key={`${item.code}-${index}`}
-                    className="grid grid-cols-[120px_minmax(0,1.4fr)_72px_110px] gap-2 border-b border-slate-900 px-3 py-2 text-sm text-slate-200"
+                    className="grid grid-cols-[130px_minmax(0,1fr)_64px_110px] items-center border-b border-gray-100 px-4 py-2.5 transition-colors hover:bg-gray-50 dark:border-slate-800/60 dark:hover:bg-slate-800/30"
                   >
-                    <div className="font-semibold text-white">{item.code}</div>
-                    <div className="min-w-0 text-slate-300">
-                      <span className="block break-words leading-5">{item.title}</span>
+                    <div className="truncate font-mono text-xs font-bold tracking-tight text-gray-800 dark:text-slate-100">{item.code}</div>
+                    <div className="min-w-0 pr-2">
+                      <span className="block truncate text-sm text-gray-600 dark:text-slate-300">{item.title}</span>
                     </div>
-                    <div className="text-slate-400">{item.time}</div>
+                    <div className="text-xs text-gray-400 dark:text-slate-500">{item.time}</div>
                     <div>
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs ${statusBadgeClass(item.status)}`}>
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${statusBadgeClass(item.status)}`}>
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70" />
                         {statusLabel(item.status)}
                       </span>
                     </div>

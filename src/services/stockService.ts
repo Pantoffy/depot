@@ -116,7 +116,7 @@ export const stockService = {
             return response.data;
         } catch (error) {
             if (axios.isAxiosError(error)) {
-                console.error("Error updating stock check:", error.message);
+                console.error("Error updating stock check:", error.message, "Response:", JSON.stringify(error.response?.data));
             }
             throw error;
         }

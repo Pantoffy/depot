@@ -45,16 +45,16 @@ const FormSelect: React.FC<FormSelectProps> = ({
     onChange?.(selectedValue);
   };
 
-  let selectClasses = `h-11 w-full appearance-none rounded-lg border px-4 py-2.5 pr-10 text-sm shadow-theme-xs placeholder:text-gray-400 focus:outline-none focus:ring-2 transition-colors ${className}`;
+  let selectClasses = `h-[48px] w-full appearance-none rounded-xl border px-4 pr-10 text-sm shadow-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 transition-colors ${className}`;
 
   if (disabled) {
-    selectClasses += ` bg-gray-100 text-gray-500 border-gray-300 opacity-50 cursor-not-allowed dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700`;
+    selectClasses += ` bg-gray-100 text-gray-500 border-gray-200 opacity-50 cursor-not-allowed dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700`;
   } else if (error) {
-    selectClasses += ` bg-white dark:bg-gray-900 text-gray-900 dark:text-white border-error-500 focus:border-error-500 focus:ring-error-500/20 dark:border-error-500`;
+    selectClasses += ` bg-white text-gray-900 border-error-500 focus:outline-none focus:ring-2 focus:ring-error-500 dark:bg-gray-900 dark:text-white dark:border-error-500`;
   } else if (success) {
-    selectClasses += ` bg-white dark:bg-gray-900 text-gray-900 dark:text-white border-success-500 focus:border-success-500 focus:ring-success-500/20 dark:border-success-500`;
+    selectClasses += ` bg-white text-gray-900 border-success-500 focus:outline-none focus:ring-2 focus:ring-success-500 dark:bg-gray-900 dark:text-white dark:border-success-500`;
   } else {
-    selectClasses += ` bg-white dark:bg-gray-900 text-gray-900 dark:text-white border-gray-300 focus:border-brand-500 focus:ring-brand-500/20 dark:border-gray-700 dark:focus:border-brand-500`;
+    selectClasses += ` bg-white text-gray-900 border-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white`;
   }
 
   const containerClasses = "w-full";

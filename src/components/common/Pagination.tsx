@@ -51,7 +51,7 @@ export default function Pagination({
   startItem,
   endItem,
   onPageChange,
-  labelPrefix = "Dang hien thi",
+  labelPrefix = "Hiển thị",
 }: PaginationProps) {
   const safeStart = totalItems === 0 ? 0 : Math.min(startItem, totalItems);
   const safeEnd = totalItems === 0 ? 0 : Math.min(endItem, totalItems);
@@ -64,7 +64,7 @@ export default function Pagination({
         <span className="font-semibold text-gray-900 dark:text-white">{safeStart}</span>
         {" - "}
         <span className="font-semibold text-gray-900 dark:text-white">{safeEnd}</span>
-        {" tren "}
+        {" trên "}
         <span className="font-semibold text-gray-900 dark:text-white">{totalItems}</span>
       </p>
 

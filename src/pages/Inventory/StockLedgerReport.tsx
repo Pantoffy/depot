@@ -476,46 +476,30 @@ export default function StockLedgerReport() {
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="rounded-3xl border border-cyan-200 bg-gradient-to-br from-cyan-50 via-white to-sky-50 p-5 shadow-sm dark:border-cyan-500/20 dark:from-cyan-500/10 dark:via-gray-900 dark:to-gray-950">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div className="max-w-3xl">
-                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-cyan-700 dark:text-cyan-300">
-                  Warehouse Control Room
-                </p>
-                <h2 className="mt-2 text-2xl font-bold leading-tight text-gray-900 dark:text-white lg:text-3xl">
-                  Báo cáo xuất nhập tồn
-                </h2>
-                <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-                  Báo cáo này đối chiếu tồn kho hiện tại với toàn bộ phiếu nhập và phiếu xuất đã duyệt trong khoảng thời gian đã chọn.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <div className="rounded-2xl border border-cyan-200 bg-white/80 p-3 dark:border-cyan-500/20 dark:bg-gray-900/60">
-                  <p className="text-[11px] uppercase text-cyan-700 dark:text-cyan-300">Dòng báo cáo</p>
-                  <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">{summaryStats.totalRows}</p>
-                </div>
-                <div className="rounded-2xl border border-emerald-200 bg-white/80 p-3 dark:border-emerald-500/20 dark:bg-gray-900/60">
-                  <p className="text-[11px] uppercase text-emerald-700 dark:text-emerald-300">Tồn đầu kỳ</p>
-                  <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">{formatNumber(summaryStats.totalOpeningQuantity)}</p>
-                </div>
-                <div className="rounded-2xl border border-amber-200 bg-white/80 p-3 dark:border-amber-500/20 dark:bg-gray-900/60">
-                  <p className="text-[11px] uppercase text-amber-700 dark:text-amber-300">Nhập trong kỳ</p>
-                  <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">{formatNumber(summaryStats.totalImportQuantity)}</p>
-                </div>
-                <div className="rounded-2xl border border-rose-200 bg-white/80 p-3 dark:border-rose-500/20 dark:bg-gray-900/60">
-                  <p className="text-[11px] uppercase text-rose-700 dark:text-rose-300">Xuất trong kỳ</p>
-                  <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">{formatNumber(summaryStats.totalExportQuantity)}</p>
-                </div>
-                <div className="rounded-2xl border border-indigo-200 bg-white/80 p-3 dark:border-indigo-500/20 dark:bg-gray-900/60">
-                  <p className="text-[11px] uppercase text-indigo-700 dark:text-indigo-300">Tồn cuối kỳ</p>
-                  <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">{formatNumber(summaryStats.totalEndingQuantity)}</p>
-                </div>
-                <div className="rounded-2xl border border-violet-200 bg-white/80 p-3 dark:border-violet-500/20 dark:bg-gray-900/60">
-                  <p className="text-[11px] uppercase text-violet-700 dark:text-violet-300">Giá trị nhập</p>
-                  <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">{formatNumber(summaryStats.totalImportValue)}₫</p>
-                </div>
-              </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+            <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4 dark:border-sky-500/30 dark:from-sky-500/10 dark:to-gray-900">
+              <p className="text-xs font-medium text-sky-700 dark:text-sky-300">Dòng báo cáo</p>
+              <p className="mt-2 text-2xl font-semibold text-sky-900 dark:text-sky-200">{summaryStats.totalRows}</p>
+            </div>
+            <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-4 dark:border-indigo-500/30 dark:from-indigo-500/10 dark:to-gray-900">
+              <p className="text-xs font-medium text-indigo-700 dark:text-indigo-300">Tồn đầu kỳ</p>
+              <p className="mt-2 text-2xl font-semibold text-indigo-900 dark:text-indigo-200">{formatNumber(summaryStats.totalOpeningQuantity)}</p>
+            </div>
+            <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 dark:border-emerald-500/30 dark:from-emerald-500/10 dark:to-gray-900">
+              <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Nhập trong kỳ</p>
+              <p className="mt-2 text-2xl font-semibold text-emerald-900 dark:text-emerald-200">{formatNumber(summaryStats.totalImportQuantity)}</p>
+            </div>
+            <div className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-white p-4 dark:border-rose-500/30 dark:from-rose-500/10 dark:to-gray-900">
+              <p className="text-xs font-medium text-rose-700 dark:text-rose-300">Xuất trong kỳ</p>
+              <p className="mt-2 text-2xl font-semibold text-rose-900 dark:text-rose-200">{formatNumber(summaryStats.totalExportQuantity)}</p>
+            </div>
+            <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4 dark:border-amber-500/30 dark:from-amber-500/10 dark:to-gray-900">
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-300">Tồn cuối kỳ</p>
+              <p className="mt-2 text-2xl font-semibold text-amber-900 dark:text-amber-200">{formatNumber(summaryStats.totalEndingQuantity)}</p>
+            </div>
+            <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-4 dark:border-violet-500/30 dark:from-violet-500/10 dark:to-gray-900">
+              <p className="text-xs font-medium text-violet-700 dark:text-violet-300">Giá trị nhập</p>
+              <p className="mt-2 text-2xl font-semibold text-violet-900 dark:text-violet-200">{formatNumber(summaryStats.totalImportValue)}₫</p>
             </div>
           </div>
 
@@ -529,9 +513,9 @@ export default function StockLedgerReport() {
             <div className="border-b border-gray-200 p-5 dark:border-gray-800 lg:p-6">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Bộ lọc báo cáo</h3>
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Báo cáo xuất nhập tồn</h2>
                   <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    Chọn khoảng thời gian, kho và từ khóa cần theo dõi.
+                    Đối chiếu tồn kho hiện tại với phiếu nhập và xuất đã duyệt trong khoảng thời gian đã chọn.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -540,12 +524,6 @@ export default function StockLedgerReport() {
                     className="inline-flex items-center justify-center rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-medium text-cyan-700 transition-colors hover:bg-cyan-100 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-200 dark:hover:bg-cyan-500/20"
                   >
                     Xuất CSV
-                  </button>
-                  <button
-                    onClick={fetchData}
-                    className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-                  >
-                    Làm mới dữ liệu
                   </button>
                 </div>
               </div>
@@ -561,7 +539,7 @@ export default function StockLedgerReport() {
                   value={searchTerm}
                   onChange={(event) => handleSearchChange(event.target.value)}
                   placeholder="Tìm kho, mã vật tư, tên vật tư, đơn vị..."
-                  className="h-11 w-full rounded-xl border border-gray-300 bg-white px-4 text-sm text-gray-900 placeholder-gray-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:placeholder-gray-400"
+                  className="h-[48px] w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-sm transition-all duration-200"
                 />
               </div>
 
@@ -572,7 +550,7 @@ export default function StockLedgerReport() {
                 <select
                   value={warehouseFilter === "" ? "" : String(warehouseFilter)}
                   onChange={(event) => handleWarehouseChange(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-gray-300 bg-white px-4 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                  className="h-[48px] w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 text-sm text-gray-900 dark:text-white focus:border-transparent focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-sm transition-all duration-200"
                 >
                   <option value="">Tất cả kho</option>
                   {warehouses.map((warehouse) => (
@@ -591,7 +569,7 @@ export default function StockLedgerReport() {
                   type="date"
                   value={startDate}
                   onChange={(event) => handleStartDateChange(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-gray-300 bg-white px-4 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                  className="h-[48px] w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 text-sm text-gray-900 dark:text-white focus:border-transparent focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-sm transition-all duration-200"
                 />
               </div>
 
@@ -603,7 +581,7 @@ export default function StockLedgerReport() {
                   type="date"
                   value={endDate}
                   onChange={(event) => handleEndDateChange(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-gray-300 bg-white px-4 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                  className="h-[48px] w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 text-sm text-gray-900 dark:text-white focus:border-transparent focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-sm transition-all duration-200"
                 />
               </div>
             </div>
@@ -618,26 +596,26 @@ export default function StockLedgerReport() {
                 </p>
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-800">
-                <table className="min-w-[1400px] w-full text-left text-sm">
-                  <thead className="bg-gray-50 text-gray-600 dark:bg-gray-900/60 dark:text-gray-300">
+              <div className="overflow-x-auto custom-scrollbar rounded-2xl border border-gray-200 dark:border-gray-800">
+                <table className="module-table min-w-[1400px] w-full text-sm">
+                  <thead className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
                     <tr>
-                      <th className="whitespace-nowrap px-4 py-3 font-medium">Kho</th>
-                      <th className="whitespace-nowrap px-4 py-3 font-medium">Mã vật tư</th>
-                      <th className="whitespace-nowrap px-4 py-3 font-medium">Tên vật tư</th>
-                      <th className="whitespace-nowrap px-4 py-3 font-medium">Phân loại</th>
-                      <th className="whitespace-nowrap px-4 py-3 font-medium">Đơn vị</th>
-                      <th className="whitespace-nowrap px-4 py-3 font-medium">Tồn đầu kỳ</th>
-                      <th className="whitespace-nowrap px-4 py-3 font-medium">Nhập kỳ</th>
-                      <th className="whitespace-nowrap px-4 py-3 font-medium">Xuất kỳ</th>
-                      <th className="whitespace-nowrap px-4 py-3 font-medium">Tồn cuối kỳ</th>
-                      <th className="whitespace-nowrap px-4 py-3 font-medium">Cập nhật gần nhất</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Kho</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Mã vật tư</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Tên vật tư</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Phân loại</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Đơn vị</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Tồn đầu kỳ</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Nhập kỳ</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Xuất kỳ</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Tồn cuối kỳ</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Cập nhật gần nhất</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                     {paginatedRows.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="px-4 py-10 text-center text-gray-500 dark:text-gray-400">
+                        <td colSpan={10} className="px-6 py-10 text-center text-gray-500 dark:text-gray-400">
                           Không có dữ liệu phù hợp với bộ lọc hiện tại.
                         </td>
                       </tr>
@@ -645,42 +623,42 @@ export default function StockLedgerReport() {
                       paginatedRows.map((row) => {
                         const stockTone =
                           row.endingQuantity <= 0
-                            ? "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300"
+                            ? "bg-rose-50 text-rose-700 shadow-[0_0_0_1px_rgba(225,29,72,0.2)] dark:bg-rose-900/20 dark:text-rose-300"
                             : row.endingQuantity <= 10
-                              ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-                              : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300";
+                              ? "bg-amber-50 text-amber-700 shadow-[0_0_0_1px_rgba(245,158,11,0.2)] dark:bg-amber-900/20 dark:text-amber-300"
+                              : "bg-emerald-50 text-emerald-700 shadow-[0_0_0_1px_rgba(16,185,129,0.2)] dark:bg-emerald-900/20 dark:text-emerald-300";
 
                         return (
                           <tr
                             key={row.key}
-                            className="odd:bg-white even:bg-gray-50/70 hover:bg-cyan-50/60 dark:odd:bg-transparent dark:even:bg-gray-800/20 dark:hover:bg-cyan-900/20"
+                            className="hover:bg-gray-50 dark:hover:bg-gray-800/50"
                           >
-                            <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{row.warehouseName}</td>
-                            <td className="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">{row.materialCode}</td>
-                            <td className="px-4 py-3 text-gray-900 dark:text-gray-100">
+                            <td className="px-6 py-4 font-medium text-gray-900 dark:text-gray-100">{row.warehouseName}</td>
+                            <td className="whitespace-nowrap px-6 py-4 font-mono text-xs font-bold tracking-tight text-gray-900 dark:text-white">{row.materialCode}</td>
+                            <td className="px-6 py-4 text-gray-900 dark:text-gray-100">
                               <div className="max-w-[220px] truncate" title={row.materialName}>
                                 {row.materialName}
                               </div>
                             </td>
-                            <td className="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">{row.categoryName}</td>
-                            <td className="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">{row.unitName}</td>
-                            <td className="whitespace-nowrap px-4 py-3 text-gray-900 dark:text-gray-100">{formatNumber(row.openingQuantity)}</td>
-                            <td className="whitespace-nowrap px-4 py-3 text-gray-900 dark:text-gray-100">
-                              <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                            <td className="whitespace-nowrap px-6 py-4 text-gray-600 dark:text-gray-400">{row.categoryName}</td>
+                            <td className="whitespace-nowrap px-6 py-4 text-gray-600 dark:text-gray-400">{row.unitName}</td>
+                            <td className="whitespace-nowrap px-6 py-4 text-gray-900 dark:text-gray-100">{formatNumber(row.openingQuantity)}</td>
+                            <td className="whitespace-nowrap px-6 py-4">
+                              <span className="status-pill bg-emerald-50 text-emerald-700 shadow-[0_0_0_1px_rgba(16,185,129,0.2)] dark:bg-emerald-900/20 dark:text-emerald-300">
                                 {formatNumber(row.importQuantity)}
                               </span>
                             </td>
-                            <td className="whitespace-nowrap px-4 py-3 text-gray-900 dark:text-gray-100">
-                              <span className="rounded-full bg-rose-100 px-2.5 py-1 text-xs font-medium text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">
+                            <td className="whitespace-nowrap px-6 py-4">
+                              <span className="status-pill bg-rose-50 text-rose-700 shadow-[0_0_0_1px_rgba(225,29,72,0.2)] dark:bg-rose-900/20 dark:text-rose-300">
                                 {formatNumber(row.exportQuantity)}
                               </span>
                             </td>
-                            <td className="whitespace-nowrap px-4 py-3">
-                              <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${stockTone}`}>
+                            <td className="whitespace-nowrap px-6 py-4">
+                              <span className={`status-pill ${stockTone}`}>
                                 {formatNumber(row.endingQuantity)}
                               </span>
                             </td>
-                            <td className="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(row.lastActivityDate)}</td>
+                            <td className="whitespace-nowrap px-6 py-4 text-gray-600 dark:text-gray-400">{formatDateTime(row.lastActivityDate)}</td>
                           </tr>
                         );
                       })

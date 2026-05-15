@@ -48,18 +48,18 @@ const FormInput: FC<FormInputProps> = ({
   readOnly = false,
   autoComplete,
 }) => {
-  let inputClasses = `h-11 w-full rounded-lg border px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:outline-none focus:ring-2 transition-colors ${className}`;
+  let inputClasses = `h-[48px] w-full rounded-xl border px-4 text-sm shadow-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 transition-colors ${className}`;
 
   if (disabled) {
-    inputClasses += ` bg-gray-100 text-gray-500 border-gray-300 opacity-50 cursor-not-allowed dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700`;
+    inputClasses += ` bg-gray-100 text-gray-500 border-gray-200 opacity-50 cursor-not-allowed dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700`;
   } else if (readOnly) {
-    inputClasses += ` bg-gray-50 text-gray-700 border-gray-300 cursor-not-allowed dark:bg-gray-800/50 dark:text-gray-400 dark:border-gray-700`;
+    inputClasses += ` bg-gray-50 text-gray-700 border-gray-200 cursor-not-allowed dark:bg-gray-800/50 dark:text-gray-400 dark:border-gray-700`;
   } else if (error) {
-    inputClasses += ` border-error-500 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:border-error-500 focus:ring-error-500/20 dark:border-error-500 dark:text-error-400`;
+    inputClasses += ` bg-white text-gray-900 border-error-500 focus:outline-none focus:ring-2 focus:ring-error-500 dark:bg-gray-900 dark:text-white dark:border-error-500`;
   } else if (success) {
-    inputClasses += ` border-success-500 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:border-success-500 focus:ring-success-500/20 dark:border-success-500 dark:text-success-400`;
+    inputClasses += ` bg-white text-gray-900 border-success-500 focus:outline-none focus:ring-2 focus:ring-success-500 dark:bg-gray-900 dark:text-white dark:border-success-500`;
   } else {
-    inputClasses += ` bg-white dark:bg-gray-900 text-gray-900 dark:text-white border-gray-300 focus:border-brand-500 focus:ring-brand-500/20 dark:border-gray-700 dark:focus:border-brand-500`;
+    inputClasses += ` bg-white text-gray-900 border-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white`;
   }
 
   const containerClasses = "w-full";

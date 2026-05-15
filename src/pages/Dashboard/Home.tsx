@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+﻿import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
@@ -9,1306 +9,686 @@ import { importService, ImportReceipt } from "../../services/importService";
 import { exportService, ExportReceipt } from "../../services/exportService";
 import { unitService, Unit, DEFAULT_UNITS } from "../../services/unitService";
 import { buildInventoryQuantityMap, inventoryService, InventoryItem } from "../../services/inventoryService";
+import { purchaseOrderService, PurchaseOrder } from "../../services/purchaseOrderService";
+import { stockService, StockCheck } from "../../services/stockService";
 
-// ========== COMPONENTS ==========
+// ── helpers ──────────────────────────────────────────────────────────────────
 
-// Date Range Selector Component
-const DateRangeSelector = ({
-  startDate,
-  endDate,
-  onStartDateChange,
-  onEndDateChange,
-  onReset,
-}: {
-  startDate: string;
-  endDate: string;
-  onStartDateChange: (date: string) => void;
-  onEndDateChange: (date: string) => void;
-  onReset: () => void;
-}) => {
+const fmtMoney = (v?: number) => {
+  if (!v) return "0";
+  if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)}B`;
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  return v.toLocaleString("vi-VN");
+};
+
+const fmtDate = (d?: string) => {
+  if (!d) return "–";
+  const dt = new Date(d);
+  return isNaN(dt.getTime()) ? "–" : dt.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
+};
+
+const fmtRelative = (d?: string) => {
+  if (!d) return "–";
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return "–";
+  const diff = Date.now() - dt.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Vừa xong";
+  if (mins < 60) return `${mins} phút trước`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} giờ trước`;
+  return fmtDate(d);
+};
+
+const monthKey = (d?: string) => {
+  if (!d) return "";
+  const dt = new Date(d);
+  return isNaN(dt.getTime()) ? "" : dt.toISOString().slice(0, 7);
+};
+
+// ── SVG Smooth Line Chart ─────────────────────────────────────────────────────
+
+const LineChart: React.FC<{
+  series: { label: string; values: number[]; color: string; areaColor: string }[];
+  labels: string[];
+  height?: number;
+}> = ({ series, labels, height = 160 }) => {
+  const W = 480;
+  const H = height;
+  const PAD = { top: 20, right: 16, bottom: 32, left: 36 };
+  const cW = W - PAD.left - PAD.right;
+  const cH = H - PAD.top - PAD.bottom;
+  const n = labels.length;
+
+  const allVals = series.flatMap((s) => s.values);
+  const maxV = Math.max(...allVals, 1);
+
+  const xPos = (i: number) => PAD.left + (i / Math.max(n - 1, 1)) * cW;
+  const yPos = (v: number) => PAD.top + cH - (v / maxV) * cH;
+
+  // Smooth cubic bezier path
+  const smoothPath = (vals: number[]) => {
+    if (vals.length < 2) return `M ${xPos(0)},${yPos(vals[0] || 0)}`;
+    const pts = vals.map((v, i) => ({ x: xPos(i), y: yPos(v) }));
+    let d = `M ${pts[0].x},${pts[0].y}`;
+    for (let i = 1; i < pts.length; i++) {
+      const cp1x = (pts[i - 1].x + pts[i].x) / 2;
+      d += ` C ${cp1x},${pts[i - 1].y} ${cp1x},${pts[i].y} ${pts[i].x},${pts[i].y}`;
+    }
+    return d;
+  };
+
+  const smoothArea = (vals: number[]) => {
+    const line = smoothPath(vals);
+    const last = vals.length - 1;
+    return `${line} L ${xPos(last)},${PAD.top + cH} L ${xPos(0)},${PAD.top + cH} Z`;
+  };
+
+  const guides = [0, 0.5, 1].map((f) => Math.round(f * maxV));
+
   return (
-    <div className="dashboard-panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-      <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300">Khoảng thời gian theo dõi</span>
-      <div className="flex flex-col sm:flex-row gap-2 flex-1">
-        <input
-          type="date"
-          value={startDate}
-          onChange={(e) => onStartDateChange(e.target.value)}
-          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:ring-cyan-900"
-        />
-        <input
-          type="date"
-          value={endDate}
-          onChange={(e) => onEndDateChange(e.target.value)}
-          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:ring-cyan-900"
-        />
-        <button
-          onClick={onReset}
-          className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-semibold text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300 dark:hover:bg-cyan-900/50"
-        >
-          Đặt lại
-        </button>
-      </div>
-    </div>
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ display: "block", height }} aria-hidden="true">
+      <defs>
+        {series.map((s, si) => (
+          <linearGradient key={si} id={`aGrad${si}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={s.color} stopOpacity="0.18" />
+            <stop offset="100%" stopColor={s.color} stopOpacity="0" />
+          </linearGradient>
+        ))}
+      </defs>
+
+      {guides.map((v) => (
+        <g key={v}>
+          <line x1={PAD.left} y1={yPos(v)} x2={PAD.left + cW} y2={yPos(v)}
+            stroke="#f3f4f6" strokeWidth="1" strokeDasharray={v === 0 ? "0" : "4 3"} />
+          <text x={PAD.left - 6} y={yPos(v) + 4} textAnchor="end" fontSize={9} fill="#d1d5db">{fmtMoney(v)}</text>
+        </g>
+      ))}
+
+      {series.map((s, si) => (
+        <path key={`area-${si}`} d={smoothArea(s.values)} fill={`url(#aGrad${si})`} />
+      ))}
+
+      {series.map((s, si) => (
+        <path key={`line-${si}`} d={smoothPath(s.values)} fill="none" stroke={s.color} strokeWidth="2.5" strokeLinecap="round" />
+      ))}
+
+      {/* Only show last dot per series */}
+      {series.map((s, si) => {
+        const last = s.values.length - 1;
+        return (
+          <circle key={`dot-${si}`} cx={xPos(last)} cy={yPos(s.values[last])} r={4}
+            fill="white" stroke={s.color} strokeWidth="2.5" />
+        );
+      })}
+
+      {labels.map((l, i) => (
+        <text key={i} x={xPos(i)} y={H - 6} textAnchor="middle" fontSize={9} fill="#9ca3af">{l}</text>
+      ))}
+    </svg>
   );
 };
 
-const StatCard = ({
-  title,
-  value,
-  subtitle,
-  icon,
-  color = "blue",
-  onClick,
-  trend,
-}: {
-  title: string;
-  value: string | number;
-  subtitle?: string;
+// ── KPI Stat Card ─────────────────────────────────────────────────────────────
+
+const StatCard: React.FC<{
   icon: React.ReactNode;
-  color?: string;
+  iconBg: string;
+  label: string;
+  value: string | number;
+  sub: string;
+  badge?: { text: string; color: string };
   onClick?: () => void;
-  trend?: { value: number; isIncrease: boolean };
-}) => {
-  const colorMap: Record<string, { card: string; iconBg: string; trendUp: string; trendDown: string }> = {
-    blue: {
-      card: "border-cyan-200/70 bg-cyan-50/80 dark:border-cyan-800/60 dark:bg-cyan-900/20",
-      iconBg: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300",
-      trendUp: "text-cyan-700 dark:text-cyan-300",
-      trendDown: "text-rose-600 dark:text-rose-300",
-    },
-    green: {
-      card: "border-emerald-200/70 bg-emerald-50/80 dark:border-emerald-800/60 dark:bg-emerald-900/20",
-      iconBg: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-      trendUp: "text-emerald-700 dark:text-emerald-300",
-      trendDown: "text-rose-600 dark:text-rose-300",
-    },
-    orange: {
-      card: "border-amber-200/70 bg-amber-50/80 dark:border-amber-800/60 dark:bg-amber-900/20",
-      iconBg: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-      trendUp: "text-amber-700 dark:text-amber-300",
-      trendDown: "text-rose-600 dark:text-rose-300",
-    },
-    red: {
-      card: "border-rose-200/70 bg-rose-50/80 dark:border-rose-800/60 dark:bg-rose-900/20",
-      iconBg: "bg-rose-500/15 text-rose-700 dark:text-rose-300",
-      trendUp: "text-rose-700 dark:text-rose-300",
-      trendDown: "text-rose-600 dark:text-rose-300",
-    },
-    purple: {
-      card: "border-indigo-200/70 bg-indigo-50/80 dark:border-indigo-800/60 dark:bg-indigo-900/20",
-      iconBg: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300",
-      trendUp: "text-indigo-700 dark:text-indigo-300",
-      trendDown: "text-rose-600 dark:text-rose-300",
-    },
-  };
-
-  const c = colorMap[color] || colorMap.blue;
-
-  return (
-    <div
-      onClick={onClick}
-      className={`group relative overflow-hidden rounded-2xl border p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${c.card} ${
-        onClick ? "cursor-pointer" : ""
-      }`}
-    >
-      <div className="pointer-events-none absolute -right-6 -top-8 h-20 w-20 rounded-full bg-white/50 blur-2xl dark:bg-slate-200/10" />
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-300">{title}</p>
-          <p className="mt-1 text-3xl font-bold text-slate-900 dark:text-white">{value}</p>
-          <div className="mt-2 flex items-center gap-2">
-            {subtitle && (
-              <p className="text-xs text-slate-600 dark:text-slate-400">{subtitle}</p>
-            )}
-            {trend && (
-              <span className={`text-xs font-semibold ${trend.isIncrease ? c.trendUp : c.trendDown}`}>
-                {trend.isIncrease ? '↑' : '↓'} {Math.abs(trend.value)}%
-              </span>
-            )}
-          </div>
-        </div>
-        <div className={`rounded-xl p-3 transition-transform group-hover:scale-110 ${c.iconBg}`}>
-          {icon}
-        </div>
+}> = ({ icon, iconBg, label, value, sub, badge, onClick }) => (
+  <div
+    onClick={onClick}
+    className={`group relative overflow-hidden rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md dark:border-gray-800 dark:bg-gray-900 ${onClick ? "cursor-pointer" : ""}`}
+  >
+    <div className="flex items-start justify-between">
+      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
+        {icon}
       </div>
+      {badge && (
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${badge.color}`}>{badge.text}</span>
+      )}
     </div>
-  );
+    <div className="mt-4">
+      <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">{label}</p>
+      <p className="mt-1 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">{value}</p>
+      <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{sub}</p>
+    </div>
+    <div className={`absolute bottom-0 left-0 h-0.5 w-full ${iconBg} opacity-60 group-hover:opacity-100 transition-opacity`} />
+  </div>
+);
+
+// ── Status badge ──────────────────────────────────────────────────────────────
+
+const scBadge = (s: string) => {
+  const base = "inline-block rounded-md px-1.5 py-0.5 text-[10px] font-semibold";
+  if (s === "Đã duyệt") return <span className={`${base} bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400`}>{s}</span>;
+  if (s === "Đã trình") return <span className={`${base} bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400`}>{s}</span>;
+  if (s === "Đã hủy")   return <span className={`${base} bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400`}>{s}</span>;
+  return <span className={`${base} bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400`}>{s || "Nháp"}</span>;
 };
 
-const VerticalBarChart = ({
-  data,
-  unitLabel,
-  valueFormatter,
-}: {
-  data: { label: string; value: number }[];
-  unitLabel: string;
-  valueFormatter: (value: number) => string;
-}) => {
-  if (data.length === 0) {
-    return (
-      <div className="h-56 rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/40 flex items-center justify-center">
-        <p className="text-sm text-gray-500 dark:text-gray-400">Chưa có dữ liệu trong khoảng thời gian đã chọn</p>
-      </div>
-    );
-  }
-
-  const maxValue = Math.max(...data.map((item) => item.value), 1);
-
-  return (
-    <div className="h-64 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-gray-800 dark:bg-gray-900/40">
-      <p className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">{unitLabel}</p>
-      <div className="flex h-full items-end gap-2">
-        {data.map((item) => {
-          const height = Math.max(6, (item.value / maxValue) * 100);
-          return (
-            <div key={item.label} className="flex h-full flex-1 flex-col items-center gap-2">
-              <span className="text-[10px] font-semibold text-gray-600 dark:text-gray-300">
-                {valueFormatter(item.value)}
-              </span>
-              <div className="flex w-full flex-1 items-end">
-                <div
-                  className="w-full rounded-t-md bg-gradient-to-t from-cyan-700 to-teal-400 transition-all hover:from-cyan-800 hover:to-teal-500"
-                  style={{ height: `${height}%` }}
-                  title={`${item.label}: ${valueFormatter(item.value)}`}
-                />
-              </div>
-              <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">{item.label}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+const poBadge = (s: string) => {
+  const n = (s || "").toLowerCase();
+  const base = "inline-block rounded-md px-1.5 py-0.5 text-[10px] font-semibold";
+  if (n === "đã duyệt" || n === "approved")   return <span className={`${base} bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400`}>{s}</span>;
+  if (n === "chờ duyệt" || n === "pending")   return <span className={`${base} bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400`}>{s}</span>;
+  if (n === "đã hủy"    || n === "cancelled") return <span className={`${base} bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400`}>{s}</span>;
+  return <span className={`${base} bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400`}>{s}</span>;
 };
 
-const DonutChart = ({
-  segments,
-  total,
-}: {
-  segments: { label: string; value: number; color: string; textColor: string }[];
-  total: number;
-}) => {
-  let accumulated = 0;
-  const gradientStops = segments
-    .map((segment) => {
-      const start = accumulated;
-      const ratio = total > 0 ? (segment.value / total) * 100 : 0;
-      accumulated += ratio;
-      return `${segment.color} ${start}% ${accumulated}%`;
-    })
-    .join(", ");
+// ── Card shell ────────────────────────────────────────────────────────────────
 
-  const backgroundStyle = total > 0 ? `conic-gradient(${gradientStops})` : "conic-gradient(#d1d5db 0% 100%)";
-
-  return (
-    <div className="flex flex-col items-center gap-4">
-      <div
-        className="relative h-44 w-44 rounded-full"
-        style={{ background: backgroundStyle }}
-        aria-label="Biểu đồ cơ cấu tồn kho"
-      >
-        <div className="absolute inset-6 rounded-full bg-white dark:bg-gray-900" />
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{total}</p>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Nguyên liệu</p>
-        </div>
-      </div>
-
-      <div className="w-full space-y-2.5">
-        {segments.map((segment) => {
-          const percentage = total > 0 ? ((segment.value / total) * 100).toFixed(1) : 0;
-          return (
-            <div key={segment.label} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                <span className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: segment.color }} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">{segment.label}</p>
-                  <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-                    <div
-                      className="h-full rounded-full"
-                      style={{ width: `${percentage}%`, backgroundColor: segment.color }}
-                    />
-                  </div>
-                  <div className="mt-1 flex items-center gap-2">
-                    <span className="text-xs text-gray-500 dark:text-gray-400">{segment.value} mục</span>
-                    <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">({percentage}%)</span>
-                  </div>
-                </div>
-              </div>
-              <div className="ml-2 flex-shrink-0 text-right">
-                <p className={`text-sm font-bold ${segment.textColor}`}>{segment.value}</p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-// Alert Box Component
-const AlertBox = ({
-  type = "warning",
-  title,
-  message,
-}: {
-  type?: "warning" | "error" | "success" | "info";
+const Card: React.FC<{
   title: string;
-  message: string;
-}) => {
-  const styles = {
-    warning: {
-      bg: "bg-orange-50 dark:bg-orange-900/20",
-      border: "border-orange-200 dark:border-orange-800/50",
-      icon: "text-orange-600 dark:text-orange-400",
-      title: "text-orange-900 dark:text-orange-200",
-      message: "text-orange-700 dark:text-orange-300",
-    },
-    error: {
-      bg: "bg-red-50 dark:bg-red-900/20",
-      border: "border-red-200 dark:border-red-800/50",
-      icon: "text-red-600 dark:text-red-400",
-      title: "text-red-900 dark:text-red-200",
-      message: "text-red-700 dark:text-red-300",
-    },
-    success: {
-      bg: "bg-green-50 dark:bg-green-900/20",
-      border: "border-green-200 dark:border-green-800/50",
-      icon: "text-green-600 dark:text-green-400",
-      title: "text-green-900 dark:text-green-200",
-      message: "text-green-700 dark:text-green-300",
-    },
-    info: {
-      bg: "bg-blue-50 dark:bg-blue-900/20",
-      border: "border-blue-200 dark:border-blue-800/50",
-      icon: "text-blue-600 dark:text-blue-400",
-      title: "text-blue-900 dark:text-blue-200",
-      message: "text-blue-700 dark:text-blue-300",
-    },
-  };
-
-  const s = styles[type];
-
-  return (
-    <div className={`${s.bg} border ${s.border} rounded-lg p-4 flex gap-3`}>
-      <div className={`flex-shrink-0 ${s.icon} mt-0.5`}>
-        {type === "warning" && (
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-          </svg>
-        )}
-        {type === "error" && (
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-          </svg>
-        )}
-        {type === "success" && (
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-          </svg>
-        )}
-      </div>
+  subtitle?: string;
+  footer?: React.ReactNode;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+  className?: string;
+}> = ({ title, subtitle, footer, children, action, className = "" }) => (
+  <div className={`flex flex-col rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900 ${className}`}>
+    <div className="flex items-start justify-between border-b border-gray-100 px-5 py-4 dark:border-gray-800">
       <div>
-        <h4 className={`font-semibold ${s.title}`}>{title}</h4>
-        <p className={`text-sm ${s.message} mt-1`}>{message}</p>
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{title}</h3>
+        {subtitle && <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{subtitle}</p>}
       </div>
+      {action}
     </div>
-  );
-};
+    <div className="flex-1 px-5 py-4">{children}</div>
+    {footer && <div className="border-t border-gray-100 px-5 py-3 dark:border-gray-800">{footer}</div>}
+  </div>
+);
 
-// ========== MAIN COMPONENT ==========
+// ── Timeline item ─────────────────────────────────────────────────────────────
+
+const TimelineItem: React.FC<{
+  dot: string;
+  title: string;
+  sub: string;
+  right: React.ReactNode;
+  isLast?: boolean;
+}> = ({ dot, title, sub, right, isLast }) => (
+  <div className="flex gap-3">
+    <div className="flex flex-col items-center">
+      <span className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${dot} ring-2 ring-white dark:ring-gray-900`} />
+      {!isLast && <span className="mt-1 flex-1 w-px bg-gray-100 dark:bg-gray-800" />}
+    </div>
+    <div className={`flex w-full items-start justify-between gap-2 ${isLast ? "pb-0" : "pb-3"}`}>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-gray-800 dark:text-white">{title}</p>
+        <p className="text-xs text-gray-400 dark:text-gray-500">{sub}</p>
+      </div>
+      <div className="shrink-0 text-right">{right}</div>
+    </div>
+  </div>
+);
+
+// ── main ──────────────────────────────────────────────────────────────────────
+
 export default function Home() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [importChartMode, setImportChartMode] = useState<"count" | "amount">("count");
-  const [exportChartMode, setExportChartMode] = useState<"count" | "amount">("count");
 
-  // Date range state
-  const [startDate, setStartDate] = useState(() => {
-    const date = new Date();
-    date.setDate(date.getDate() - 90);
-    return date.toISOString().split("T")[0];
-  });
-  const [endDate, setEndDate] = useState(() => {
-    return new Date().toISOString().split("T")[0];
-  });
+  const [materials,      setMaterials]      = useState<Material[]>([]);
+  const [suppliers,      setSuppliers]      = useState<Supplier[]>([]);
+  const [warehouses,     setWarehouses]     = useState<Warehouse[]>([]);
+  const [imports,        setImports]        = useState<ImportReceipt[]>([]);
+  const [exports,        setExports]        = useState<ExportReceipt[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [stockChecks,    setStockChecks]    = useState<StockCheck[]>([]);
+  const [inventories,    setInventories]    = useState<InventoryItem[]>([]);
+  const [units,          setUnits]          = useState<Unit[]>(DEFAULT_UNITS);
 
-  // Data states
-  const [materials, setMaterials] = useState<Material[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [imports, setImports] = useState<ImportReceipt[]>([]);
-  const [exports, setExports] = useState<ExportReceipt[]>([]);
-  const [units, setUnits] = useState<Unit[]>(DEFAULT_UNITS);
-  const [inventories, setInventories] = useState<InventoryItem[]>([]);
-  const inventoryQuantityByMaterial = useMemo(
-    () => buildInventoryQuantityMap(inventories),
-    [inventories],
-  );
+  const qtyMap = useMemo(() => buildInventoryQuantityMap(inventories), [inventories]);
 
-  useEffect(() => {
-    fetchAll();
-  }, []);
+  useEffect(() => { load(); }, []);
 
-  const fetchAll = async () => {
+  const load = async () => {
     setLoading(true);
     try {
-      const [mats, sups, whs, imps, exps, invs] = await Promise.allSettled([
+      const rs = await Promise.allSettled([
         materialService.getAllMaterials(),
         supplierService.getAllSuppliers(),
         warehouseService.getAllWarehouses(),
         importService.getAllImportReceipts(),
         exportService.getAllExportReceipts(),
         inventoryService.getAllInventories(),
+        purchaseOrderService.getAllPurchaseOrders(),
+        stockService.getAllStockChecks(),
+        unitService.getAllUnits(),
       ]);
-
-      if (mats.status === "fulfilled") setMaterials(mats.value);
-      if (sups.status === "fulfilled") setSuppliers(sups.value);
-      if (whs.status === "fulfilled") setWarehouses(whs.value);
-      if (imps.status === "fulfilled") setImports(imps.value);
-      if (exps.status === "fulfilled") setExports(exps.value);
-      if (invs.status === "fulfilled") setInventories(invs.value);
-
-      // Load units
-      try {
-        const u = await unitService.getAllUnits();
-        if (u && u.length > 0) setUnits(u);
-      } catch {
-        // keep DEFAULT_UNITS
-      }
+      if (rs[0].status === "fulfilled") setMaterials(rs[0].value);
+      if (rs[1].status === "fulfilled") setSuppliers(rs[1].value);
+      if (rs[2].status === "fulfilled") setWarehouses(rs[2].value);
+      if (rs[3].status === "fulfilled") setImports(rs[3].value);
+      if (rs[4].status === "fulfilled") setExports(rs[4].value);
+      if (rs[5].status === "fulfilled") setInventories(rs[5].value);
+      if (rs[6].status === "fulfilled") setPurchaseOrders(rs[6].value);
+      if (rs[7].status === "fulfilled") setStockChecks(rs[7].value);
+      if (rs[8].status === "fulfilled" && (rs[8].value as Unit[]).length) setUnits(rs[8].value as Unit[]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleResetDate = () => {
-    const date = new Date();
-    date.setDate(date.getDate() - 90);
-    setStartDate(date.toISOString().split("T")[0]);
-    setEndDate(new Date().toISOString().split("T")[0]);
-  };
+  const qty   = (id?: number) => id ? Number(qtyMap[id] || 0) : 0;
+  const uname = (m: Material) => m.unitName || units.find((u) => u.id === m.unitId)?.name || "";
 
-  // ========== Computed values ==========
-  const startDateObj = new Date(startDate);
-  const endDateObj = new Date(endDate);
+  // ── derived ──────────────────────────────────────────────────────────────────
 
-  const getMaterialStockQuantity = (materialId?: number) => {
-    if (!materialId) return 0;
-    return inventoryQuantityByMaterial[materialId] || 0;
-  };
+  const now   = new Date();
+  const thisM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
-  // Filter imports by date range
-  const filteredImports = useMemo(
-    () =>
-      imports.filter((imp) => {
-        const importDate = new Date(imp.importTime || imp.createdAt);
-        return importDate >= startDateObj && importDate <= endDateObj;
-      }),
-    [imports, startDate, endDate]
+  const maintenance = useMemo(() => warehouses.filter((w) => (w.status || "").toLowerCase() === "bảo trì"), [warehouses]);
+  const totalStock  = useMemo(() => Object.values(qtyMap).reduce((s, v) => s + Number(v || 0), 0), [qtyMap]);
+
+  const stockSegs = useMemo(() => ({
+    healthy: materials.filter((m) => qty(m.id) > 10).length,
+    warn:    materials.filter((m) => { const q = qty(m.id); return q > 0 && q <= 10; }).length,
+    empty:   materials.filter((m) => qty(m.id) <= 0).length,
+  }), [materials, qtyMap]);
+
+  const lowStock = useMemo(() =>
+    materials.map((m) => ({ ...m, stock: qty(m.id) })).filter((m) => m.stock <= 10).sort((a, b) => a.stock - b.stock),
+  [materials, qtyMap]);
+
+  const importsM  = useMemo(() => imports.filter((r) => monthKey(r.importTime || r.createdAt) === thisM), [imports, thisM]);
+  const exportsM  = useMemo(() => exports.filter((r) => monthKey(r.exportDate  || r.createdAt) === thisM), [exports, thisM]);
+  const importVal = useMemo(() => importsM.reduce((s, r) => s + (r.totalAmount || 0), 0), [importsM]);
+  const exportVal = useMemo(() => exportsM.reduce((s, r) => s + (r.totalAmount || 0), 0), [exportsM]);
+
+  const pendingPOs = useMemo(() => purchaseOrders.filter((p) => { const s = (p.status || "").toLowerCase(); return s === "chờ duyệt" || s === "pending"; }), [purchaseOrders]);
+  const pendingSC  = useMemo(() => stockChecks.filter((s) => s.status === "Đã trình"), [stockChecks]);
+
+  // 6-month series
+  const months6 = useMemo(() => Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+    return { key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: `T${d.getMonth() + 1}` };
+  }), []);
+
+  const importSeries = useMemo(() => months6.map((m) => imports.filter((r) => monthKey(r.importTime || r.createdAt) === m.key).length), [imports, months6]);
+  const exportSeries = useMemo(() => months6.map((m) => exports.filter((r) => monthKey(r.exportDate  || r.createdAt) === m.key).length), [exports, months6]);
+
+  // prev month delta
+  const prevM = useMemo(() => {
+    const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }, []);
+  const importsPrev = useMemo(() => imports.filter((r) => monthKey(r.importTime || r.createdAt) === prevM).length, [imports, prevM]);
+  const exportsPrev = useMemo(() => exports.filter((r) => monthKey(r.exportDate  || r.createdAt) === prevM).length, [exports, prevM]);
+
+  // unified recent activity feed (imports + exports merged, sorted by date)
+  const recentActivity = useMemo(() => {
+    const imp = [...imports]
+      .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+      .slice(0, 5)
+      .map((r) => ({ type: "import" as const, id: r.id, code: r.code, sub: r.supplier?.name || `NCC #${r.supplierId}`, amount: r.totalAmount, date: r.importTime || r.createdAt }));
+    const exp = [...exports]
+      .sort((a, b) => +new Date(b.createdAt ?? "") - +new Date(a.createdAt ?? ""))
+      .slice(0, 5)
+      .map((r) => ({ type: "export" as const, id: r.id, code: r.code, sub: r.receiverName || "–", amount: r.totalAmount, date: r.exportDate || r.createdAt }));
+    return [...imp, ...exp].sort((a, b) => +new Date(b.date ?? "") - +new Date(a.date ?? "")).slice(0, 8);
+  }, [imports, exports]);
+
+  const recentPOs = useMemo(() => [...purchaseOrders].sort((a, b) => +new Date(b.createdAt ?? b.orderDate) - +new Date(a.createdAt ?? a.orderDate)).slice(0, 5), [purchaseOrders]);
+  const recentSC  = useMemo(() => [...stockChecks].sort((a, b) => +new Date(b.createdTime ?? b.startDate ?? "") - +new Date(a.createdTime ?? a.startDate ?? "")).slice(0, 5), [stockChecks]);
+
+  // ── loading ──────────────────────────────────────────────────────────────────
+
+  if (loading) return (
+    <>
+      <PageMeta title="Tổng quan | Quản lý kho" description="Tổng quan hệ thống" />
+      <PageBreadcrumb pageTitle="Tổng quan" />
+      <div className="flex flex-col items-center justify-center py-40">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-100 border-t-cyan-500 dark:border-gray-800" />
+        <p className="mt-4 text-sm text-gray-400 dark:text-gray-500">Đang tải dữ liệu…</p>
+      </div>
+    </>
   );
 
-  const filteredExports = useMemo(
-    () =>
-      exports.filter((receipt) => {
-        const exportDate = new Date(receipt.exportDate || receipt.createdAt);
-        return exportDate >= startDateObj && exportDate <= endDateObj;
-      }),
-    [exports, startDate, endDate]
-  );
+  // ── render ───────────────────────────────────────────────────────────────────
 
-  const activeMaterials = materials.filter((m) => m.status === "Đang kinh doanh");
-  const lowStockMaterials = materials
-    .map((material) => ({
-      ...material,
-      stockQuantity: getMaterialStockQuantity(material.id),
-    }))
-    .filter((m) => m.stockQuantity <= 10 && m.status === "Đang kinh doanh")
-    .sort((a, b) => a.stockQuantity - b.stockQuantity);
-
-  const activeSuppliers = suppliers.filter((s) => {
-    const normalized = (s.status || "").trim().toLowerCase();
-    return normalized === "đang kinh doanh" || normalized === "đang hoạt động";
-  });
-  const maintenanceWarehouses = warehouses.filter((w) => {
-    const normalized = (w.status || "").trim().toLowerCase();
-    return normalized === "bảo trì";
-  });
-
-  const pendingImports = filteredImports.filter((imp) => {
-    const normalized = (imp.status || "").trim().toLowerCase();
-    return normalized !== "approved" && normalized !== "đã xác nhận" && normalized !== "da xac nhan";
-  }).length;
-  const approvedImports = filteredImports.length - pendingImports;
-
-  const outOfStockMaterials = materials.filter(
-    (material) => getMaterialStockQuantity(material.id) <= 0 && material.status === "Đang kinh doanh"
-  );
-  const inventoryHealthRate =
-    activeMaterials.length === 0
-      ? 0
-      : Math.round(
-          (activeMaterials.filter((material) => getMaterialStockQuantity(material.id) > 10).length / activeMaterials.length) * 100
-        );
-
-  const totalStockQuantity = Object.values(inventoryQuantityByMaterial).reduce((sum, quantity) => sum + Number(quantity || 0), 0);
-  const totalWarehouseArea = warehouses.reduce((sum, w) => sum + Number(w.area || 0), 0);
-
-  const recentImports = [...filteredImports]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 5);
-
-  const recentMaterials = [...materials]
-    .sort((a, b) => new Date(b.createdTime || "").getTime() - new Date(a.createdTime || "").getTime())
-    .slice(0, 5);
-
-  const monthlyImportSeries = useMemo(() => {
-    const now = new Date();
-    const months = Array.from({ length: 6 }, (_, idx) => {
-      const date = new Date(now.getFullYear(), now.getMonth() - (5 - idx), 1);
-      const month = `${date.getMonth() + 1}`.padStart(2, "0");
-      const key = `${date.getFullYear()}-${month}`;
-      return {
-        key,
-        label: date.toLocaleDateString("vi-VN", { month: "2-digit" }),
-        count: 0,
-        amount: 0,
-      };
-    });
-
-    const monthIndexMap = Object.fromEntries(months.map((month, idx) => [month.key, idx]));
-
-    filteredImports.forEach((receipt) => {
-      const rawDate = receipt.importTime || receipt.createdAt;
-      const date = new Date(rawDate);
-
-      if (Number.isNaN(date.getTime())) {
-        return;
-      }
-
-      const month = `${date.getMonth() + 1}`.padStart(2, "0");
-      const key = `${date.getFullYear()}-${month}`;
-      const index = monthIndexMap[key];
-
-      if (index === undefined) {
-        return;
-      }
-
-      months[index].count += 1;
-      months[index].amount += Number(receipt.totalAmount || 0);
-    });
-
-    return months;
-  }, [filteredImports]);
-
-  const monthlyExportSeries = useMemo(() => {
-    const now = new Date();
-    const months = Array.from({ length: 6 }, (_, idx) => {
-      const date = new Date(now.getFullYear(), now.getMonth() - (5 - idx), 1);
-      const month = `${date.getMonth() + 1}`.padStart(2, "0");
-      const key = `${date.getFullYear()}-${month}`;
-      return {
-        key,
-        label: date.toLocaleDateString("vi-VN", { month: "2-digit" }),
-        count: 0,
-        amount: 0,
-      };
-    });
-
-    const monthIndexMap = Object.fromEntries(months.map((month, idx) => [month.key, idx]));
-
-    filteredExports.forEach((receipt) => {
-      const rawDate = receipt.exportDate || receipt.createdAt;
-      const date = new Date(rawDate);
-
-      if (Number.isNaN(date.getTime())) {
-        return;
-      }
-
-      const month = `${date.getMonth() + 1}`.padStart(2, "0");
-      const key = `${date.getFullYear()}-${month}`;
-      const index = monthIndexMap[key];
-
-      if (index === undefined) {
-        return;
-      }
-
-      months[index].count += 1;
-      months[index].amount += Number(receipt.totalAmount || 0);
-    });
-
-    return months;
-  }, [filteredExports]);
-
-  const importChartData = useMemo(
-    () =>
-      monthlyImportSeries.map((month) => ({
-        label: month.label,
-        value: importChartMode === "count" ? month.count : Math.round(month.amount / 1000000),
-      })),
-    [monthlyImportSeries, importChartMode]
-  );
-
-  const exportChartData = useMemo(
-    () =>
-      monthlyExportSeries.map((month) => ({
-        label: month.label,
-        value: exportChartMode === "count" ? month.count : Math.round(month.amount / 1000000),
-      })),
-    [monthlyExportSeries, exportChartMode]
-  );
-
-  const totalImportAmountIn6Months = monthlyImportSeries.reduce((sum, month) => sum + month.amount, 0);
-  const totalExportAmountIn6Months = monthlyExportSeries.reduce((sum, month) => sum + month.amount, 0);
-  const peakImportMonth = monthlyImportSeries.reduce(
-    (max, current) => (current.count > max.count ? current : max),
-    monthlyImportSeries[0] || { key: "", label: "", count: 0, amount: 0 }
-  );
-  const peakExportMonth = monthlyExportSeries.reduce(
-    (max, current) => (current.count > max.count ? current : max),
-    monthlyExportSeries[0] || { key: "", label: "", count: 0, amount: 0 }
-  );
-
-  const healthyStockCount = activeMaterials.filter((material) => getMaterialStockQuantity(material.id) > 10).length;
-  const warningStockCount = activeMaterials.filter((material) => {
-    const quantity = getMaterialStockQuantity(material.id);
-    return quantity > 0 && quantity <= 10;
-  }).length;
-  const stockSegments = [
-    {
-      label: "Ổn định",
-      value: healthyStockCount,
-      color: "#10b981",
-      textColor: "text-emerald-600 dark:text-emerald-400",
-    },
-    {
-      label: "Sắp thiếu",
-      value: warningStockCount,
-      color: "#f59e0b",
-      textColor: "text-amber-600 dark:text-amber-400",
-    },
-    {
-      label: "Hết hàng",
-      value: outOfStockMaterials.length,
-      color: "#ef4444",
-      textColor: "text-red-600 dark:text-red-400",
-    },
-  ];
-  const totalTrackedStock = stockSegments.reduce((sum, segment) => sum + segment.value, 0);
-
-  const getUnitName = (material: Material) => {
-    if (material.unitName) return material.unitName;
-    const unit = units.find((u) => u.id === material.unitId);
-    return unit?.name || "";
-  };
-
-  const formatDate = (dateStr: string | undefined) => {
-    if (!dateStr) return "-";
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("vi-VN", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-  };
-
-  const formatCurrency = (amount: number | undefined) => {
-    if (!amount) return "0đ";
-    return amount.toLocaleString("vi-VN") + "đ";
-  };
-
-  // Total import value for filtered range
-  const totalImportValue = filteredImports.reduce((sum, imp) => sum + (imp.totalAmount || 0), 0);
-  const todayLabel = new Date().toLocaleDateString("vi-VN", {
-    weekday: "long",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-
-  if (loading) {
+  const deltaSign = (curr: number, prev: number) => {
+    if (prev === 0) return null;
+    const pct = Math.round(((curr - prev) / prev) * 100);
+    const up = pct >= 0;
     return (
-      <>
-        <PageMeta title="Tổng quan | Quản lý kho" description="Tổng quan hệ thống quản lý kho" />
-        <PageBreadcrumb pageTitle="Tổng quan" />
-        <div className="flex flex-col items-center justify-center py-20">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          <p className="mt-4 text-sm text-gray-600 dark:text-gray-400">Đang tải dữ liệu...</p>
-        </div>
-      </>
+      <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold ${up ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500 dark:text-rose-400"}`}>
+        {up ? "↑" : "↓"} {Math.abs(pct)}%
+      </span>
     );
-  }
+  };
 
   return (
     <>
-      <PageMeta title="Tổng quan | Quản lý kho" description="Tổng quan hệ thống quản lý kho" />
+      <PageMeta title="Tổng quan | Quản lý kho" description="Tổng quan hệ thống" />
       <PageBreadcrumb pageTitle="Tổng quan" />
 
-      <div className="dashboard-shell rounded-3xl p-3 sm:p-5">
-      {/* Date Range Selector */}
-      <div className="mb-6">
-        <DateRangeSelector
-          startDate={startDate}
-          endDate={endDate}
-          onStartDateChange={setStartDate}
-          onEndDateChange={setEndDate}
-          onReset={handleResetDate}
-        />
-      </div>
+      <div className="space-y-6">
 
-      {/* Critical Alerts Section */}
-      <div className="mb-6 space-y-4">
-        {outOfStockMaterials.length > 0 && (
-          <AlertBox
-            type="error"
-            title="Cảnh báo: Sản phẩm hết hàng"
-            message={`Có ${outOfStockMaterials.length} sản phẩm đã hết hàng. Vui lòng kiểm tra và nhập bổ sung ngay.`}
-          />
-        )}
-        {lowStockMaterials.length > 10 && (
-          <AlertBox
-            type="warning"
-            title="Cảnh báo: Tồn kho thấp"
-            message={`Có ${lowStockMaterials.length} sản phẩm tồn kho sắp thiếu. Khuyến nghị nhập bổ sung sớm.`}
-          />
-        )}
-        {pendingImports > 5 && (
-          <AlertBox
-            type="info"
-            title="Thông tin: Phiếu chờ xác nhận"
-            message={`Hiện có ${pendingImports} phiếu nhập đang chờ xác nhận.`}
-          />
-        )}
-        {maintenanceWarehouses.length > 0 && (
-          <AlertBox
-            type="warning"
-            title="Cảnh báo: Kho đang bảo trì"
-            message={`Có ${maintenanceWarehouses.length} kho đang được bảo trì. Sức chứa có thể bị hạn chế.`}
-          />
-        )}
-      </div>
-
-      {/* Hero overview */}
-      <div className="mb-6 overflow-hidden rounded-3xl border border-cyan-200 bg-gradient-to-r from-cyan-700 via-cyan-600 to-teal-600 text-white shadow-xl dark:border-slate-800/70 dark:from-slate-900 dark:via-cyan-900 dark:to-teal-900">
-        <div className="relative p-6 lg:p-7">
-          <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-white/20 blur-2xl" />
-          <div className="pointer-events-none absolute -bottom-20 left-1/3 h-44 w-44 rounded-full bg-teal-200/30 blur-2xl dark:bg-emerald-300/20" />
-
-          <div className="relative z-10 grid grid-cols-1 gap-5 lg:grid-cols-[1.3fr_1fr] lg:items-end">
-            <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-cyan-100/90">Warehouse Control Room</p>
-              <h2 className="mt-2 text-2xl font-bold leading-tight lg:text-3xl">Tổng Quan Vận Hành Kho</h2>
-              <p className="mt-2 max-w-2xl text-sm text-cyan-50/95">
-                {todayLabel}. Hệ thống hiện có {materials.length} nguyên liệu, {filteredImports.length} phiếu nhập trong kỳ và {pendingImports} phiếu đang chờ xác nhận.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="dashboard-kpi-card p-3 dashboard-float">
-                <p className="text-[11px] uppercase text-cyan-50">Sức khỏe tồn kho</p>
-                <p className="mt-1 text-xl font-bold">{inventoryHealthRate}%</p>
-                <p className="text-xs text-cyan-50/90">Mức tồn ổn định</p>
-              </div>
-              <div className="dashboard-kpi-card p-3" style={{ animationDelay: "0.3s" }}>
-                <p className="text-[11px] uppercase text-cyan-50">Nguyên liệu tồn kho thấp</p>
-                <p className="mt-1 text-xl font-bold">{lowStockMaterials.length}</p>
-                <p className="text-xs text-cyan-50/90">Cần nhập bổ sung</p>
-              </div>
-              <div className="dashboard-kpi-card p-3" style={{ animationDelay: "0.15s" }}>
-                <p className="text-[11px] uppercase text-cyan-50">Tổng tồn</p>
-                <p className="mt-1 text-xl font-bold">{totalStockQuantity.toLocaleString("vi-VN")}</p>
-                <p className="text-xs text-cyan-50/90">Đơn vị gộp</p>
-              </div>
-              <div className="dashboard-kpi-card p-3 dashboard-float" style={{ animationDelay: "0.4s" }}>
-                <p className="text-[11px] uppercase text-cyan-50">Diện tích kho</p>
-                <p className="mt-1 text-xl font-bold">{totalWarehouseArea.toLocaleString("vi-VN")}</p>
-                <p className="text-xs text-cyan-50/90">m2</p>
-              </div>
-            </div>
+        {/* ── Hero header ────────────────────────────────────────────────────── */}
+        <div className="rounded-2xl border border-gray-100 bg-gradient-to-r from-cyan-500 to-cyan-600 px-6 py-5 shadow-sm dark:border-gray-800">
+          <p className="text-sm font-medium text-cyan-100">
+            {now.toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}
+          </p>
+          <h2 className="mt-1 text-xl font-bold text-white">Tổng quan hệ thống kho</h2>
+          <div className="mt-3 flex flex-wrap gap-4 text-sm text-cyan-100">
+            <span>{warehouses.length} kho{maintenance.length > 0 ? ` · ${maintenance.length} bảo trì` : " · Tất cả hoạt động"}</span>
+            <span>{suppliers.length} nhà cung cấp</span>
+            {lowStock.filter(m => m.stock <= 0).length > 0 && (
+              <span className="font-semibold text-white">{lowStock.filter(m => m.stock <= 0).length} nguyên liệu hết hàng ⚠</span>
+            )}
           </div>
         </div>
-      </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 mb-6">
-        <StatCard
-          title="Nguyên Liệu"
-          value={materials.length}
-          subtitle={`${activeMaterials.length} đang kinh doanh`}
-          color="blue"
-          onClick={() => navigate("/quan-ly-nguyen-lieu")}
-          icon={
-            <svg className="w-8 h-8 text-white/90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-            </svg>
-          }
-        />
-        <StatCard
-          title="Nhà cung cấp"
-          value={suppliers.length}
-          subtitle={`${activeSuppliers.length} đang hoạt động`}
-          color="green"
-          onClick={() => navigate("/quan-ly-nha-cung-cap")}
-          icon={
-            <svg className="w-8 h-8 text-white/90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          }
-        />
-        <StatCard
-          title="Kho"
-          value={warehouses.length}
-          subtitle={`${maintenanceWarehouses.length} đang bảo trì`}
-          color="purple"
-          onClick={() => navigate("/quan-ly-kho")}
-          icon={
-            <svg className="w-8 h-8 text-white/90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
-          }
-        />
-        <StatCard
-          title="Phiếu nhập"
-          value={filteredImports.length}
-          subtitle={`${formatCurrency(totalImportValue)}`}
-          color="orange"
-          onClick={() => navigate("/nhap-kho")}
-          icon={
-            <svg className="w-8 h-8 text-white/90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          }
-        />
-        <StatCard
-          title="Tồn kho thấp"
-          value={lowStockMaterials.length}
-          subtitle={`${outOfStockMaterials.length} đã hết hàng`}
-          color="red"
-          onClick={() => navigate("/quan-ly-nguyen-lieu")}
-          icon={
-            <svg className="w-8 h-8 text-white/90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
-            </svg>
-          }
-        />
-      </div>
-
-      {/* Biểu đồ tổng quan - Nhập & Xuất & Cơ Cấu */}
-      <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1fr_1fr]">
-        {/* Biểu đồ Nhập Kho */}
-        <div className="dashboard-panel p-5 xl:col-span-2 row-span-2">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Biểu Đồ Nhập Kho 6 Tháng Gần Nhất</h3>
-            <div className="inline-flex rounded-lg border border-gray-200 p-1 dark:border-gray-700">
-              <button
-                onClick={() => setImportChartMode("count")}
-                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                  importChartMode === "count"
-                    ? "bg-blue-600 text-white"
-                    : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-                }`}
-              >
-                Số phiếu
-              </button>
-              <button
-                onClick={() => setImportChartMode("amount")}
-                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                  importChartMode === "amount"
-                    ? "bg-blue-600 text-white"
-                    : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-                }`}
-              >
-                Giá trị (triệu)
-              </button>
-            </div>
-          </div>
-
-          <VerticalBarChart
-            data={importChartData}
-            unitLabel={importChartMode === "count" ? "Đơn vị: số phiếu" : "Đơn vị: triệu đồng"}
-            valueFormatter={(value) => (importChartMode === "count" ? `${value}` : `${value}tr`)}
+        {/* ── 4 KPI cards ────────────────────────────────────────────────────── */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            icon={<svg className="h-5 w-5 text-cyan-600 dark:text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>}
+            iconBg="bg-cyan-50 dark:bg-cyan-900/30"
+            label="Nguyên liệu"
+            value={materials.length}
+            sub={`${materials.filter(m => qty(m.id) > 0).length} còn hàng · ${stockSegs.empty} hết hàng`}
+            onClick={() => navigate("/quan-ly-nguyen-lieu")}
           />
+          <StatCard
+            icon={<svg className="h-5 w-5 text-rose-500 dark:text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>}
+            iconBg="bg-rose-50 dark:bg-rose-900/30"
+            label="Tồn kho thấp"
+            value={lowStock.length}
+            sub={`${lowStock.filter(m => m.stock <= 0).length} hết hàng · ${lowStock.filter(m => m.stock > 0).length} sắp thiếu`}
+            badge={lowStock.filter(m => m.stock <= 0).length > 0 ? { text: "Cần xử lý", color: "bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-400" } : undefined}
+            onClick={() => navigate("/quan-ly-nguyen-lieu")}
+          />
+          <StatCard
+            icon={<svg className="h-5 w-5 text-cyan-600 dark:text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
+            iconBg="bg-cyan-50 dark:bg-cyan-900/30"
+            label="Nhập tháng này"
+            value={importsM.length}
+            sub={`Tổng ${fmtMoney(importVal)}đ`}
+            badge={importsPrev > 0 ? { text: `${importsM.length >= importsPrev ? "+" : ""}${importsM.length - importsPrev} so T-1`, color: importsM.length >= importsPrev ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-rose-50 text-rose-500 dark:bg-rose-900/30 dark:text-rose-400" } : undefined}
+            onClick={() => navigate("/nhap-kho")}
+          />
+          <StatCard
+            icon={<svg className="h-5 w-5 text-amber-500 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>}
+            iconBg="bg-amber-50 dark:bg-amber-900/30"
+            label="Đơn chờ duyệt"
+            value={pendingPOs.length}
+            sub={`${purchaseOrders.length} đơn tổng cộng`}
+            badge={pendingPOs.length > 0 ? { text: "Chờ xử lý", color: "bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400" } : undefined}
+            onClick={() => navigate("/don-dat-hang")}
+          />
+        </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <div className="rounded-lg bg-gray-50 dark:bg-white/[0.03] p-3 border border-gray-200 dark:border-white/[0.05]">
-              <p className="text-xs text-gray-500 dark:text-gray-400">Tổng phiếu nhập</p>
-              <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{filteredImports.length}</p>
-            </div>
-            <div className="rounded-lg bg-gray-50 dark:bg-white/[0.03] p-3 border border-gray-200 dark:border-white/[0.05]">
-              <p className="text-xs text-gray-500 dark:text-gray-400">Đã xác nhận</p>
-              <p className="mt-1 text-lg font-semibold text-emerald-600 dark:text-emerald-400">{approvedImports}</p>
-            </div>
-            <div className="rounded-lg bg-gray-50 dark:bg-white/[0.03] p-3 border border-gray-200 dark:border-white/[0.05]">
-              <p className="text-xs text-gray-500 dark:text-gray-400">Chờ xác nhận</p>
-              <p className="mt-1 text-lg font-semibold text-orange-600 dark:text-orange-400">{pendingImports}</p>
-            </div>
-            <div className="rounded-lg bg-gray-50 dark:bg-white/[0.03] p-3 border border-gray-200 dark:border-white/[0.05]">
-              <p className="text-xs text-gray-500 dark:text-gray-400">Giá trị trong kỳ</p>
-              <p className="mt-1 text-lg font-semibold text-blue-600 dark:text-blue-400">{formatCurrency(totalImportAmountIn6Months)}</p>
-            </div>
-          </div>
+        {/* ── Chart + Summary ─────────────────────────────────────────────────── */}
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
 
-          <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            Tháng cao nhất: {peakImportMonth.label || "--"} ({peakImportMonth.count} phiếu)
-          </p>
-
-          {/* Xuất Kho ngay dưới */}
-          {monthlyExportSeries.length > 0 && (
-            <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-base font-semibold text-gray-900 dark:text-white">Biểu Đồ Xuất Kho 6 Tháng Gần Nhất</h3>
-                <div className="inline-flex rounded-lg border border-gray-200 p-1 dark:border-gray-700">
-                  <button
-                    onClick={() => setExportChartMode("count")}
-                    className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                      exportChartMode === "count"
-                        ? "bg-blue-600 text-white"
-                        : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-                    }`}
-                  >
-                    Số phiếu
-                  </button>
-                  <button
-                    onClick={() => setExportChartMode("amount")}
-                    className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                      exportChartMode === "amount"
-                        ? "bg-blue-600 text-white"
-                        : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-                    }`}
-                  >
-                    Giá trị (triệu)
-                  </button>
-                </div>
+          {/* Activity chart — col-span-2 */}
+          <Card
+            className="xl:col-span-2"
+            title="Hoạt Động Nhập Xuất"
+            subtitle="Số phiếu mỗi tháng trong 6 tháng qua"
+            footer={
+              <div className="flex flex-wrap items-center gap-5 text-xs text-gray-500 dark:text-gray-400">
+                <span className="flex items-center gap-2">
+                  <span className="h-2.5 w-4 rounded-full bg-cyan-500" />
+                  Nhập kho
+                  <span className="font-semibold text-gray-700 dark:text-gray-300">{importsM.length}</span>
+                  tháng này
+                  {deltaSign(importsM.length, importsPrev)}
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="h-2.5 w-4 rounded-full bg-emerald-500" />
+                  Xuất kho
+                  <span className="font-semibold text-gray-700 dark:text-gray-300">{exportsM.length}</span>
+                  tháng này
+                  {deltaSign(exportsM.length, exportsPrev)}
+                </span>
+                <span className="ml-auto text-gray-400">Tổng tồn: <span className="font-semibold text-gray-600 dark:text-gray-300">{totalStock.toLocaleString("vi-VN")}</span></span>
               </div>
+            }
+          >
+            <LineChart
+              labels={months6.map((m) => m.label)}
+              series={[
+                { label: "Nhập", values: importSeries, color: "#0891b2", areaColor: "#0891b2" },
+                { label: "Xuất", values: exportSeries, color: "#10b981", areaColor: "#10b981" },
+              ]}
+              height={200}
+            />
+          </Card>
 
-              <VerticalBarChart
-                data={exportChartData}
-                unitLabel={exportChartMode === "count" ? "Đơn vị: số phiếu" : "Đơn vị: triệu đồng"}
-                valueFormatter={(value) => (exportChartMode === "count" ? `${value}` : `${value}tr`)}
-              />
+          {/* Stock health summary */}
+          <Card title="Cơ Cấu Tồn Kho" subtitle={`${materials.length} nguyên liệu`}>
+            {(() => {
+              const segs = [
+                { label: "Ổn định",    sub: ">10",  value: stockSegs.healthy, color: "#10b981", tw: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
+                { label: "Sắp thiếu", sub: "1–10", value: stockSegs.warn,    color: "#f59e0b", tw: "bg-amber-500",   text: "text-amber-600 dark:text-amber-400"   },
+                { label: "Hết hàng",  sub: "0",    value: stockSegs.empty,   color: "#ef4444", tw: "bg-rose-500",    text: "text-rose-600 dark:text-rose-400"     },
+              ];
+              const total = stockSegs.healthy + stockSegs.warn + stockSegs.empty;
+              const healthPct = total > 0 ? Math.round((stockSegs.healthy / total) * 100) : 100;
+              return (
+                <div className="space-y-5">
+                  {/* Donut-style big number */}
+                  <div className="flex items-center gap-4 rounded-xl bg-gray-50 px-4 py-3 dark:bg-gray-800/60">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500">Sức khoẻ tồn kho</p>
+                      <p className={`text-3xl font-bold ${healthPct >= 80 ? "text-emerald-600 dark:text-emerald-400" : healthPct >= 50 ? "text-amber-600 dark:text-amber-400" : "text-rose-600 dark:text-rose-400"}`}>{healthPct}%</p>
+                    </div>
+                    <div className="ml-auto text-right">
+                      <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500">Tổng tồn</p>
+                      <p className="text-lg font-bold text-gray-900 dark:text-white">{totalStock.toLocaleString("vi-VN")}</p>
+                    </div>
+                  </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-white/[0.05] dark:bg-white/[0.03]">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Tổng phiếu xuất</p>
-                  <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{filteredExports.length}</p>
-                </div>
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-white/[0.05] dark:bg-white/[0.03]">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Giá trị trong kỳ</p>
-                  <p className="mt-1 text-lg font-semibold text-cyan-600 dark:text-cyan-400">{formatCurrency(totalExportAmountIn6Months)}</p>
-                </div>
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-white/[0.05] dark:bg-white/[0.03]">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Tháng cao nhất</p>
-                  <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{peakExportMonth.label || "--"}</p>
-                </div>
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-white/[0.05] dark:bg-white/[0.03]">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Số phiếu cao nhất</p>
-                  <p className="mt-1 text-lg font-semibold text-emerald-600 dark:text-emerald-400">{peakExportMonth.count}</p>
-                </div>
-              </div>
+                  {/* Stacked bar */}
+                  <div className="flex h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                    {segs.map((seg) => (
+                      <div key={seg.label} className={`${seg.tw} transition-all`}
+                        style={{ width: `${total > 0 ? (seg.value / total) * 100 : 0}%` }}
+                        title={`${seg.label}: ${seg.value}`} />
+                    ))}
+                  </div>
 
-              <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                Tháng cao nhất: {peakExportMonth.label || "--"} ({peakExportMonth.count} phiếu)
-              </p>
+                  {/* Rows */}
+                  <div className="space-y-2.5">
+                    {segs.map((seg) => (
+                      <div key={seg.label} className="flex items-center gap-3">
+                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: seg.color }} />
+                        <span className="flex-1 text-sm text-gray-600 dark:text-gray-300">{seg.label} <span className="text-gray-400">({seg.sub})</span></span>
+                        <span className={`text-sm font-bold ${seg.text}`}>{seg.value}</span>
+                        <span className="w-10 text-right text-xs text-gray-400">{total > 0 ? Math.round((seg.value / total) * 100) : 0}%</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Month summary mini */}
+                  <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
+                    <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Tháng này</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { label: "Phiếu nhập", value: importsM.length, sub: fmtMoney(importVal) + "đ", color: "text-cyan-600 dark:text-cyan-400" },
+                        { label: "Phiếu xuất", value: exportsM.length, sub: fmtMoney(exportVal) + "đ", color: "text-emerald-600 dark:text-emerald-400" },
+                        { label: "Chờ kiểm kê", value: pendingSC.length, sub: "phiếu", color: pendingSC.length > 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-400" },
+                        { label: "Kho bảo trì", value: maintenance.length, sub: "kho", color: maintenance.length > 0 ? "text-rose-500 dark:text-rose-400" : "text-gray-400" },
+                      ].map(item => (
+                        <div key={item.label} className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800/60">
+                          <p className="text-[10px] text-gray-400 dark:text-gray-500">{item.label}</p>
+                          <p className={`text-lg font-bold ${item.color}`}>{item.value}</p>
+                          <p className="text-[10px] text-gray-400">{item.sub}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </Card>
+        </div>
+
+        {/* ── Activity feed + POs + Stock checks ──────────────────────────────── */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+
+          {/* Unified activity timeline */}
+          <Card
+            className="lg:col-span-1"
+            title="Hoạt Động Gần Đây"
+            subtitle="Nhập & xuất kho mới nhất"
+            action={<button onClick={() => navigate("/nhap-kho")} className="text-xs text-cyan-600 hover:underline dark:text-cyan-400">Xem thêm</button>}
+          >
+            {recentActivity.length === 0
+              ? <p className="py-6 text-center text-sm text-gray-400">Chưa có dữ liệu</p>
+              : <div className="space-y-0">
+                  {recentActivity.map((item, idx) => (
+                    <TimelineItem
+                      key={`${item.type}-${item.id}`}
+                      dot={item.type === "import" ? "bg-cyan-500" : "bg-emerald-500"}
+                      title={item.code || `#${item.id}`}
+                      sub={item.sub}
+                      isLast={idx === recentActivity.length - 1}
+                      right={
+                        <div>
+                          <p className={`text-xs font-semibold ${item.type === "import" ? "text-cyan-600 dark:text-cyan-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                            {item.type === "import" ? "Nhập" : "Xuất"} · {fmtMoney(item.amount)}đ
+                          </p>
+                          <p className="text-[11px] text-gray-400">{fmtRelative(item.date)}</p>
+                        </div>
+                      }
+                    />
+                  ))}
+                </div>
+            }
+          </Card>
+
+          {/* Purchase orders */}
+          <Card
+            title="Đơn Đặt Hàng"
+            subtitle={`${purchaseOrders.length} tổng · ${pendingPOs.length} chờ duyệt`}
+            action={<button onClick={() => navigate("/don-dat-hang")} className="text-xs text-cyan-600 hover:underline dark:text-cyan-400">Xem tất cả</button>}
+          >
+            {recentPOs.length === 0
+              ? <p className="py-6 text-center text-sm text-gray-400">Chưa có dữ liệu</p>
+              : <div className="space-y-0">
+                  {recentPOs.map((po, idx) => (
+                    <TimelineItem
+                      key={po.id}
+                      dot={(po.status || "").toLowerCase() === "chờ duyệt" || (po.status || "").toLowerCase() === "pending" ? "bg-amber-400" : "bg-gray-300 dark:bg-gray-600"}
+                      title={po.code || po.poNumber || `#${po.id}`}
+                      sub={po.supplier?.name || `NCC #${po.supplierId}`}
+                      isLast={idx === recentPOs.length - 1}
+                      right={
+                        <div className="text-right">
+                          {poBadge(po.status)}
+                          <p className="mt-0.5 text-[11px] text-gray-400">{fmtDate(po.orderDate)}</p>
+                        </div>
+                      }
+                    />
+                  ))}
+                </div>
+            }
+          </Card>
+
+          {/* Stock checks */}
+          <Card
+            title="Phiếu Kiểm Kê"
+            subtitle={`${stockChecks.length} tổng · ${pendingSC.length} chờ duyệt`}
+            action={<button onClick={() => navigate("/kiem-ke")} className="text-xs text-cyan-600 hover:underline dark:text-cyan-400">Xem tất cả</button>}
+          >
+            {recentSC.length === 0
+              ? <p className="py-6 text-center text-sm text-gray-400">Chưa có dữ liệu</p>
+              : <div className="space-y-0">
+                  {recentSC.map((sc, idx) => (
+                    <TimelineItem
+                      key={sc.id}
+                      dot={sc.status === "Đã trình" ? "bg-amber-400" : sc.status === "Đã duyệt" ? "bg-emerald-500" : "bg-gray-300 dark:bg-gray-600"}
+                      title={sc.code}
+                      sub={sc.name || sc.warehouse?.name || "–"}
+                      isLast={idx === recentSC.length - 1}
+                      right={
+                        <div className="text-right">
+                          {scBadge(sc.status)}
+                          <p className="mt-0.5 text-[11px] text-gray-400">{fmtDate(sc.startDate || sc.createdTime)}</p>
+                        </div>
+                      }
+                    />
+                  ))}
+                </div>
+            }
+          </Card>
+        </div>
+
+        {/* ── Low stock + Quick actions ─────────────────────────────────────────── */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+
+          {/* Low stock with progress bars */}
+          {lowStock.length > 0 && (
+            <div className="lg:col-span-2">
+              <Card
+                title="Nguyên Liệu Tồn Kho Thấp"
+                subtitle={`${lowStock.length} cần chú ý · ${lowStock.filter(m => m.stock <= 0).length} hết hàng`}
+                action={<button onClick={() => navigate("/quan-ly-nguyen-lieu")} className="text-xs text-rose-500 hover:underline dark:text-rose-400">Xem tất cả</button>}
+              >
+                <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+                  {lowStock.slice(0, 20).map((m) => {
+                    const maxRef = 50;
+                    const pct = Math.min((m.stock / maxRef) * 100, 100);
+                    const barColor = m.stock <= 0 ? "bg-rose-500" : m.stock <= 5 ? "bg-orange-400" : "bg-amber-400";
+                    const textColor = m.stock <= 0 ? "text-rose-600 dark:text-rose-400" : m.stock <= 5 ? "text-orange-600 dark:text-orange-400" : "text-amber-600 dark:text-amber-400";
+                    return (
+                      <div key={m.id}>
+                        <div className="flex items-center justify-between">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-gray-800 dark:text-white">{m.name}</p>
+                            <p className="text-xs text-gray-400">{m.code} · {m.categoryName}</p>
+                          </div>
+                          <span className={`ml-3 shrink-0 text-sm font-bold ${textColor}`}>
+                            {m.stock} {uname(m)}
+                          </span>
+                        </div>
+                        <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                          <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
             </div>
           )}
-        </div>
 
-        {/* Cơ Cấu Tồn Kho */}
-        <div className="dashboard-panel p-5">
-          <h3 className="mb-4 text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-            <svg className="w-5 h-5 text-cyan-600 dark:text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-            Cơ Cấu Tồn Kho
-          </h3>
-          <DonutChart segments={stockSegments} total={totalTrackedStock} />
-          
-          {/* Detailed Metrics */}
-          <div className="mt-6 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30 p-3">
-                <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300 uppercase">Ổn định</p>
-                <p className="mt-1.5 text-xl font-bold text-emerald-900 dark:text-emerald-200">
-                  {totalTrackedStock > 0 ? ((healthyStockCount / totalTrackedStock) * 100).toFixed(1) : 0}%
-                </p>
-                <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">{healthyStockCount} / {totalTrackedStock}</p>
-              </div>
-              <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/30 p-3">
-                <p className="text-xs font-medium text-amber-700 dark:text-amber-300 uppercase">Sắp Thiếu</p>
-                <p className="mt-1.5 text-xl font-bold text-amber-900 dark:text-amber-200">
-                  {totalTrackedStock > 0 ? ((warningStockCount / totalTrackedStock) * 100).toFixed(1) : 0}%
-                </p>
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{warningStockCount} / {totalTrackedStock}</p>
-              </div>
-              <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 p-3">
-                <p className="text-xs font-medium text-red-700 dark:text-red-300 uppercase">Hết Hàng</p>
-                <p className="mt-1.5 text-xl font-bold text-red-900 dark:text-red-200">
-                  {totalTrackedStock > 0 ? ((outOfStockMaterials.length / totalTrackedStock) * 100).toFixed(1) : 0}%
-                </p>
-                <p className="text-xs text-red-600 dark:text-red-400 mt-1">{outOfStockMaterials.length} / {totalTrackedStock}</p>
-              </div>
-              <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/30 p-3">
-                <p className="text-xs font-medium text-blue-700 dark:text-blue-300 uppercase">Sức Khỏe</p>
-                <p className="mt-1.5 text-xl font-bold text-blue-900 dark:text-blue-200">{inventoryHealthRate}%</p>
-                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Mức tồn ổn định</p>
-              </div>
-            </div>
-
-            {/* Additional Statistics */}
-            <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-              <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-3 uppercase">Thống Kê Chi Tiết</p>
-              <div className="space-y-2 text-xs text-gray-600 dark:text-gray-400">
-                <div className="flex items-center justify-between">
-                  <span>Tổng số lượng tồn kho:</span>
-                  <span className="font-semibold text-gray-900 dark:text-white">{totalStockQuantity.toLocaleString("vi-VN")}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Số nguyên liệu đang kinh doanh:</span>
-                  <span className="font-semibold text-gray-900 dark:text-white">{activeMaterials.length}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Trung bình tồn kho/sản phẩm:</span>
-                  <span className="font-semibold text-gray-900 dark:text-white">
-                    {activeMaterials.length > 0 ? (totalStockQuantity / activeMaterials.length).toFixed(0) : 0}
+          {/* Quick actions — icon tiles */}
+          <Card title="Thao Tác Nhanh" subtitle="Truy cập nhanh">
+            <div className="grid grid-cols-2 gap-2.5">
+              {[
+                { label: "Nhập kho",    path: "/nhap-kho",             icon: <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" /></svg>, bg: "bg-cyan-50 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-400", border: "hover:border-cyan-200 dark:hover:border-cyan-800" },
+                { label: "Xuất kho",    path: "/xuat-kho",             icon: <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16V4m0 0l4 4m-4-4l-4 4M7 8v12m0 0L3 16m4 4l4-4" /></svg>, bg: "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400", border: "hover:border-emerald-200 dark:hover:border-emerald-800" },
+                { label: "Đặt hàng",    path: "/don-dat-hang",         icon: <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>, bg: "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400", border: "hover:border-amber-200 dark:hover:border-amber-800" },
+                { label: "Kiểm kê",     path: "/kiem-ke",              icon: <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>, bg: "bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400", border: "hover:border-violet-200 dark:hover:border-violet-800" },
+                { label: "Nguyên liệu", path: "/quan-ly-nguyen-lieu",  icon: <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>, bg: "bg-rose-50 text-rose-500 dark:bg-rose-900/30 dark:text-rose-400", border: "hover:border-rose-200 dark:hover:border-rose-800" },
+                { label: "Nhà cung cấp",path: "/quan-ly-nha-cung-cap", icon: <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>, bg: "bg-teal-50 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400", border: "hover:border-teal-200 dark:hover:border-teal-800" },
+                { label: "Quản lý kho", path: "/quan-ly-kho",          icon: <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>, bg: "bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400", border: "hover:border-indigo-200 dark:hover:border-indigo-800" },
+                { label: "Lịch",         path: "/calendar",             icon: <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>, bg: "bg-pink-50 text-pink-500 dark:bg-pink-900/30 dark:text-pink-400", border: "hover:border-pink-200 dark:hover:border-pink-800" },
+              ].map((a) => (
+                <button
+                  key={a.label}
+                  onClick={() => navigate(a.path)}
+                  className={`group flex flex-col items-center gap-2 rounded-xl border border-gray-100 p-3 text-center transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm dark:border-gray-800 ${a.border}`}
+                >
+                  <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${a.bg} transition-transform duration-200 group-hover:scale-110`}>
+                    {a.icon}
                   </span>
-                </div>
-              </div>
+                  <span className="text-[11px] font-medium leading-tight text-gray-600 dark:text-gray-400">{a.label}</span>
+                </button>
+              ))}
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 mb-6">
-
-        {/* Nguyên liệu tồn kho thấp */}
-        <div className="dashboard-panel lg:col-span-1 overflow-hidden">
-          <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-900/10 dark:to-orange-900/10">
-            <h3 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-              <svg className="w-5 h-5 text-red-600 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
-              Tồn Kho Thấp
-            </h3>
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-              {lowStockMaterials.length}
-            </span>
-          </div>
-          <div className="p-5">
-            {lowStockMaterials.length === 0 ? (
-              <div className="text-center py-8">
-                <svg className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Tồn kho ổn định</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {lowStockMaterials.slice(0, 8).map((m) => (
-                  <div
-                    key={m.id}
-                    className="flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-red-300 dark:hover:border-red-600 bg-gray-50 dark:bg-gray-900/20 hover:bg-red-50/50 dark:hover:bg-red-900/10 transition-all"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                        {m.name}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{m.code}</p>
-                    </div>
-                    <span
-                      className={`flex-shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
-                        getMaterialStockQuantity(m.id) <= 0
-                          ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-                          : getMaterialStockQuantity(m.id) <= 5
-                            ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
-                            : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300"
-                      }`}
-                    >
-                      {getMaterialStockQuantity(m.id)} {getUnitName(m)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          </Card>
         </div>
 
-        {/* Phiếu nhập gần đây - redesigned */}
-        <div className="dashboard-panel lg:col-span-2 overflow-hidden">
-          <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-orange-50 to-yellow-50 dark:from-orange-900/10 dark:to-yellow-900/10">
-            <h3 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-              <svg className="w-5 h-5 text-orange-600 dark:text-orange-400" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M5.5 13a3.5 3.5 0 01-.369-6.98 4 4 0 117.753-1.3A4.5 4.5 0 1113.5 13H11V9.413l1.293 1.293a1 1 0 001.414-1.414l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13H5.5z" />
-              </svg>
-              Phiếu Nhập Gần Đây
-            </h3>
-            <button
-              onClick={() => navigate("/nhap-kho")}
-              className="px-3 py-1.5 text-xs font-medium text-orange-600 dark:text-orange-400 bg-orange-100 dark:bg-orange-900/30 rounded-lg hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors"
-            >
-              Xem tất cả
-            </button>
-          </div>
-          <div className="divide-y divide-gray-100 dark:divide-gray-800">
-            {recentImports.length === 0 ? (
-              <div className="p-8 text-center">
-                <svg className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Chưa có phiếu nhập nào</p>
-              </div>
-            ) : (
-              recentImports.map((imp, idx) => (
-                <div key={imp.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3">
-                        <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white font-bold text-sm">
-                          {(idx + 1).toString().padStart(2, "0")}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                            {imp.code}
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                            {imp.supplier?.name || `NCC #${imp.supplierId}`}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                        {formatCurrency(imp.totalAmount)}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {formatDate(imp.createdAt)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom Grid - Redesigned */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 mb-6">
-        
-        {/* Nguyên liệu mới thêm - Card Style */}
-        <div className="dashboard-panel lg:col-span-2 overflow-hidden">
-          <div className="flex items-center justify-between p-5 lg:p-6 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/10 dark:to-cyan-900/10">
-            <div>
-              <h3 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m0 0h6m-6-6H0m0 0h6" />
-                </svg>
-                Nguyên Liệu Mới Thêm
-              </h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{recentMaterials.length} sản phẩm</p>
-            </div>
-            <button
-              onClick={() => navigate("/quan-ly-nguyen-lieu")}
-              className="px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
-            >
-              Xem tất cả
-            </button>
-          </div>
-
-          <div className="p-5 lg:p-6">
-            {recentMaterials.length === 0 ? (
-              <div className="text-center py-12">
-                <svg className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                </svg>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Chưa có nguyên liệu mới</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {recentMaterials.slice(0, 6).map((m) => (
-                  <div
-                    key={m.id}
-                    className="flex flex-col p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 bg-gray-50 dark:bg-gray-900/30 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-all duration-200"
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-900 dark:text-white truncate text-sm">
-                          {m.name}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {m.code}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between mt-auto pt-2 border-t border-gray-200 dark:border-gray-700">
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M3 1a1 1 0 000 2h1.22l.305 1.222a.997.997 0 00.01.042L5.960 9H9a1 1 0 000-2H6.592l-.94-4.472A1 1 0 004.11 2H3z" />
-                          <path fillRule="evenodd" d="M16 16V4h-1.05a2.5 2.5 0 00-4.9 0H10V2a2 2 0 10-4 0v1H4a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2zm-5.5-2.5a.5.5 0 11-1 0 .5.5 0 011 0zm4.5-.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" clipRule="evenodd" />
-                        </svg>
-                        {getMaterialStockQuantity(m.id)} {getUnitName(m)}
-                      </span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                        {formatDate(m.createdTime)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Danh sách nhà cung cấp + kho */}
-        <div className="space-y-6">
-          {/* Nhà cung cấp */}
-          <div className="dashboard-panel overflow-hidden">
-            <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/10 dark:to-emerald-900/10">
-              <h3 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
-                </svg>
-                Nhà Cung Cấp
-              </h3>
-              <button
-                onClick={() => navigate("/quan-ly-nha-cung-cap")}
-                className="px-2.5 py-1 text-xs font-medium text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 bg-green-100/50 dark:bg-green-900/20 rounded hover:bg-green-200 dark:hover:bg-green-900/40 transition-colors"
-              >
-                Tất cả
-              </button>
-            </div>
-            <div className="p-4 space-y-2">
-              {suppliers.length === 0 ? (
-                <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">
-                  Chưa có nhà cung cấp
-                </p>
-              ) : (
-                suppliers.slice(0, 5).map((s) => (
-                  <div
-                    key={s.id}
-                    className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white font-bold text-sm">
-                        {(s.name || s.code || "?")[0].toUpperCase()}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                          {s.name}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                          {s.phone || s.email}
-                        </p>
-                      </div>
-                    </div>
-                    <div className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${s.status === "Đang hoạt động" || s.status === "Đang kinh doanh" ? "bg-green-500" : "bg-gray-400"}`} />
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Kho */}
-          <div className="dashboard-panel overflow-hidden">
-            <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/10 dark:to-indigo-900/10">
-              <h3 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
-                </svg>
-                Kho
-              </h3>
-              <button
-                onClick={() => navigate("/quan-ly-kho")}
-                className="px-2.5 py-1 text-xs font-medium text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 bg-purple-100/50 dark:bg-purple-900/20 rounded hover:bg-purple-200 dark:hover:bg-purple-900/40 transition-colors"
-              >
-                Tất cả
-              </button>
-            </div>
-            <div className="p-4 space-y-2">
-              {warehouses.length === 0 ? (
-                <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">
-                  Chưa có kho nào
-                </p>
-              ) : (
-                warehouses.slice(0, 5).map((w) => (
-                  <div
-                    key={w.id}
-                    className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
-                        {(w.name || "K")[0].toUpperCase()}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                          {w.name}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                          {w.area ? `${w.area}m²` : w.address}
-                        </p>
-                      </div>
-                    </div>
-                    <div className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${w.status === "Đang hoạt động" || w.status === "Đang kinh doanh" ? "bg-green-500" : "bg-yellow-500"}`} />
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="dashboard-panel mb-6 p-5 lg:p-6">
-        <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-5">
-          Thao Tác Nhanh
-        </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-          <button
-            onClick={() => navigate("/nhap-kho")}
-            className="group flex flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-300 hover:shadow-md dark:border-slate-700 dark:from-slate-900 dark:to-slate-900/70 dark:hover:border-cyan-700 sm:p-5"
-          >
-            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-              <svg className="w-6 h-6 sm:w-7 sm:h-7 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-              </svg>
-            </div>
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Nhập kho</span>
-          </button>
-          <button
-            onClick={() => navigate("/xuat-kho")}
-            className="group flex flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md dark:border-slate-700 dark:from-slate-900 dark:to-slate-900/70 dark:hover:border-amber-700 sm:p-5"
-          >
-            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-              <svg className="w-6 h-6 sm:w-7 sm:h-7 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-            </div>
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Xuất kho</span>
-          </button>
-          <button
-            onClick={() => navigate("/quan-ly-nguyen-lieu")}
-            className="group flex flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md dark:border-slate-700 dark:from-slate-900 dark:to-slate-900/70 dark:hover:border-emerald-700 sm:p-5"
-          >
-            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-              <svg className="w-6 h-6 sm:w-7 sm:h-7 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-              </svg>
-            </div>
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Nguyên Liệu</span>
-          </button>
-          <button
-            onClick={() => navigate("/don-dat-hang")}
-            className="group flex flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md dark:border-slate-700 dark:from-slate-900 dark:to-slate-900/70 dark:hover:border-indigo-700 sm:p-5"
-          >
-            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-              <svg className="w-6 h-6 sm:w-7 sm:h-7 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-            </div>
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Đơn Đặt Hàng</span>
-          </button>
-        </div>
-      </div>
       </div>
     </>
   );

@@ -1,6 +1,8 @@
-﻿"use client";
+"use client";
 
+import { Search, SlidersHorizontal, ArrowUp, ArrowDown } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import CustomSelect from "../../components/common/CustomSelect";
@@ -12,7 +14,6 @@ import { materialService, type Material } from "../../services/materialService";
 import { hydrateMaterialsItemType, resolveMaterialItemType } from "../../services/itemTypeService";
 import { supplierService, type Supplier } from "../../services/supplierService";
 import { unitService } from "../../services/unitService";
-import { notificationService } from "../../services/notificationService";
 import {
   purchaseOrderService,
   type PurchaseOrder,
@@ -47,6 +48,9 @@ type UiOrder = {
   status: string;
   note: string;
   totalAmount: number;
+  createdBy?: string;
+  approvedBy?: string;
+  approvedAt?: string | null;
   details: LineItem[];
 };
 
@@ -195,6 +199,9 @@ const buildUiOrder = (
     status: normalizeOrderStatus(order.status),
     note: order.note || "",
     totalAmount: Number(order.totalAmount ?? calculatedTotal),
+    createdBy: order.createdBy || "",
+    approvedBy: order.approvedBy || "",
+    approvedAt: order.approvedAt || null,
     details,
   };
 };
@@ -208,6 +215,7 @@ export default function PurchaseOrderPage() {
 
   const [view, setView] = useState<PurchaseOrderView>("list");
   const [selectedOrder, setSelectedOrder] = useState<UiOrder | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [sortBy, setSortBy] = useState<"orderDate" | "totalAmount">(
@@ -283,6 +291,17 @@ export default function PurchaseOrderPage() {
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-open detail view when navigated from notification (?id=...)
+  useEffect(() => {
+    const openId = searchParams.get("id");
+    if (!openId || orders.length === 0) return;
+    const order = orders.find((o) => String(o.id) === openId);
+    if (order) {
+      openDetailView(order);
+    }
+    setSearchParams({});
+  }, [orders, searchParams]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -439,6 +458,9 @@ export default function PurchaseOrderPage() {
         view === "create"
           ? STATUS_DRAFT
           : normalizeOrderStatus(selectedOrder?.status || formData.status),
+      createdBy: selectedOrder?.createdBy || undefined,
+      approvedBy: selectedOrder?.approvedBy || undefined,
+      approvedAt: selectedOrder?.approvedAt || undefined,
       note: formData.note,
       totalAmount: lineItems.reduce((sum, i) => sum + i.soLuong * i.donGia, 0),
       purchaseOrderDetails: lineItems.map((item) => ({
@@ -487,6 +509,9 @@ export default function PurchaseOrderPage() {
       supplierId: order.supplierId,
       expectedDeliveryDate: order.expectedDeliveryDate || null,
       status: STATUS_PENDING,
+      createdBy: order.createdBy || undefined,
+      approvedBy: order.approvedBy || undefined,
+      approvedAt: order.approvedAt || undefined,
       note: order.note,
       totalAmount: order.totalAmount,
       purchaseOrderDetails: order.details.map((item) => ({
@@ -546,6 +571,9 @@ export default function PurchaseOrderPage() {
       supplierId: order.supplierId,
       expectedDeliveryDate: order.expectedDeliveryDate || null,
       status: STATUS_CONFIRMED,
+      createdBy: order.createdBy || undefined,
+      approvedBy: order.approvedBy || undefined,
+      approvedAt: order.approvedAt || undefined,
       note: order.note,
       totalAmount: order.totalAmount,
       purchaseOrderDetails: order.details.map((item) => ({
@@ -598,6 +626,9 @@ export default function PurchaseOrderPage() {
             supplierId: order.supplierId,
             expectedDeliveryDate: order.expectedDeliveryDate || null,
             status: STATUS_CANCELLED,
+            createdBy: order.createdBy || undefined,
+            approvedBy: order.approvedBy || undefined,
+            approvedAt: order.approvedAt || undefined,
             note: order.note,
             totalAmount: order.totalAmount,
             purchaseOrderDetails: order.details.map((item) => ({
@@ -643,6 +674,9 @@ export default function PurchaseOrderPage() {
             supplierId: order.supplierId,
             expectedDeliveryDate: order.expectedDeliveryDate || null,
             status: STATUS_DELIVERED,
+            createdBy: order.createdBy || undefined,
+            approvedBy: order.approvedBy || undefined,
+            approvedAt: order.approvedAt || undefined,
             note: order.note,
             totalAmount: order.totalAmount,
             purchaseOrderDetails: order.details.map((item) => ({
@@ -656,20 +690,6 @@ export default function PurchaseOrderPage() {
             })),
           };
           await purchaseOrderService.updatePurchaseOrder(order.id, payload);
-
-          // Create notification
-          try {
-            await notificationService.createNotification({
-              type: "purchase_order",
-              title: `Đơn hàng ${order.code} đã giao xong`,
-              message: `Đơn hàng ${order.code} từ nhà cung cấp ${order.supplierName} đã được đánh dấu là đã giao với tổng giá trị ${order.totalAmount.toLocaleString("vi-VN")}₫`,
-              icon: "truck",
-              priority: "high",
-            });
-          } catch (notifyError) {
-            console.error("Error creating notification:", notifyError);
-            // Continue even if notification fails
-          }
 
           await refreshOrders();
           if (selectedOrder?.id === order.id) {
@@ -1727,6 +1747,31 @@ export default function PurchaseOrderPage() {
                 </div>
               </div>
 
+              {(selectedOrder.createdBy || selectedOrder.approvedBy || selectedOrder.approvedAt) && (
+                <div className="text-xs space-y-1 mb-2">
+                  {selectedOrder.createdBy && (
+                    <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-purple-50 dark:bg-purple-500/10">
+                      <span className="text-purple-700 dark:text-purple-300">Người tạo:</span>
+                      <span className="font-medium text-purple-900 dark:text-purple-100">{selectedOrder.createdBy}</span>
+                    </div>
+                  )}
+                  {selectedOrder.approvedBy && (
+                    <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-green-50 dark:bg-green-500/10">
+                      <span className="text-green-700 dark:text-green-300">Xác nhận bởi:</span>
+                      <span className="font-medium text-green-900 dark:text-green-100">{selectedOrder.approvedBy}</span>
+                    </div>
+                  )}
+                  {selectedOrder.approvedAt && (
+                    <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-indigo-50 dark:bg-indigo-500/10">
+                      <span className="text-indigo-700 dark:text-indigo-300">Thời gian xác nhận:</span>
+                      <span className="font-medium text-indigo-900 dark:text-indigo-100">
+                        {new Date(selectedOrder.approvedAt).toLocaleString("vi-VN")}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-500/10 dark:to-teal-500/10 p-3 border border-emerald-200 dark:border-emerald-500/30">
                 <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 mb-1">TỔNG GIÁ TRỊ</p>
                 <p className="text-xl font-bold text-emerald-900 dark:text-emerald-100">
@@ -1807,19 +1852,7 @@ export default function PurchaseOrderPage() {
         <div className="p-5 lg:p-6 border-b border-gray-200 dark:border-gray-800 overflow-visible">
           <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
             <div className="relative w-full sm:w-72">
-              <svg
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
                 placeholder="Tìm đơn hàng hoặc NCC..."
@@ -1828,7 +1861,7 @@ export default function PurchaseOrderPage() {
                   setSearchTerm(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="h-[48px] w-full pl-10 px-4 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent shadow-sm transition-all duration-200"
               />
             </div>
             <div className="flex gap-2 w-full sm:w-auto">
@@ -1836,21 +1869,9 @@ export default function PurchaseOrderPage() {
                 <button
                   type="button"
                   onClick={() => setIsFilterOpen(!isFilterOpen)}
-                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
+                  className="inline-flex items-center gap-2 h-[48px] px-4 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200 shadow-sm"
                 >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
-                    />
-                  </svg>
+                  <SlidersHorizontal className="w-4 h-4" />
                   Bộ lọc
                 </button>
 
@@ -1890,7 +1911,7 @@ export default function PurchaseOrderPage() {
 
                         <button
                           onClick={() => setIsFilterOpen(false)}
-                          className="w-full px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                          className="module-primary-btn w-full px-4 py-2.5 font-medium text-white transition-colors"
                         >
                           Áp dụng
                         </button>
@@ -1913,9 +1934,9 @@ export default function PurchaseOrderPage() {
                 onClick={() =>
                   setSortOrder(sortOrder === "asc" ? "desc" : "asc")
                 }
-                className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all flex-shrink-0"
+                className="flex items-center justify-center h-[48px] w-12 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all flex-shrink-0 shadow-sm"
               >
-                {sortOrder === "asc" ? "↑" : "↓"}
+                {sortOrder === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
               </button>
             </div>
           </div>
@@ -1954,7 +1975,7 @@ export default function PurchaseOrderPage() {
                   key={order.id}
                   className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                 >
-                  <td className="px-6 py-4 font-semibold text-gray-900 dark:text-white">
+                  <td className="px-6 py-4 font-mono text-xs font-bold tracking-tight text-gray-900 dark:text-white">
                     {order.code}
                   </td>
                   <td className="px-6 py-4 text-gray-700 dark:text-gray-200">
@@ -2074,7 +2095,7 @@ export default function PurchaseOrderPage() {
           startItem={filteredOrders.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}
           endItem={currentPage * itemsPerPage}
           onPageChange={setCurrentPage}
-          labelPrefix="Hien thi"
+          labelPrefix="Hiển thị"
         />
       </div>
     </div>

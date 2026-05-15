@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Search, RefreshCw } from "lucide-react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import Pagination from "../../components/common/Pagination";
@@ -288,14 +289,14 @@ export default function StockByWarehouse() {
 
   const getStockBadgeClass = (quantity: number) => {
     if (quantity <= 0) {
-      return "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300";
+      return "bg-rose-50 text-rose-700 shadow-[0_0_0_1px_rgba(225,29,72,0.2)] dark:bg-rose-900/20 dark:text-rose-300";
     }
 
     if (quantity <= 10) {
-      return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300";
+      return "bg-amber-50 text-amber-700 shadow-[0_0_0_1px_rgba(245,158,11,0.2)] dark:bg-amber-900/20 dark:text-amber-300";
     }
 
-    return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300";
+    return "bg-emerald-50 text-emerald-700 shadow-[0_0_0_1px_rgba(16,185,129,0.2)] dark:bg-emerald-900/20 dark:text-emerald-300";
   };
 
   const getStockLabel = (quantity: number) => {
@@ -354,101 +355,101 @@ export default function StockByWarehouse() {
                 </div>
                 <button
                   onClick={fetchData}
-                  className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200 shadow-sm"
                 >
-                  Làm mới dữ liệu
+                  <RefreshCw className="w-4 h-4" />
+                  Làm mới
                 </button>
               </div>
             </div>
 
-            <div className="m-6 mb-5 flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40 lg:flex-row lg:items-center lg:justify-between">
-              <div className="relative w-full lg:max-w-xl">
-                <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Tìm theo kho, mã nguyên liệu hoặc tên nguyên liệu"
-                  value={searchTerm}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  className="h-10 w-full rounded-lg border border-gray-300 bg-white pl-10 pr-4 text-sm text-gray-900 placeholder-gray-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:placeholder-gray-400"
+            <div className="p-5 lg:p-6 border-b border-gray-200 dark:border-gray-800">
+              <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+                <div className="relative w-full sm:w-80">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Tìm theo kho, mã hoặc tên nguyên liệu..."
+                    value={searchTerm}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    className="h-[48px] w-full pl-10 px-4 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent shadow-sm transition-all duration-200"
+                  />
+                </div>
+                <CustomSelect
+                  value={filterWarehouse === "" ? "" : String(filterWarehouse)}
+                  onChange={handleWarehouseFilterChange}
+                  options={[
+                    { value: "", label: "Tất cả kho" },
+                    ...warehouses.map((warehouse) => ({
+                      value: String(warehouse.id),
+                      label: warehouse.name,
+                    })),
+                  ]}
+                  buttonClassName="w-full sm:w-72"
                 />
               </div>
-
-              <CustomSelect
-                value={filterWarehouse === "" ? "" : String(filterWarehouse)}
-                onChange={handleWarehouseFilterChange}
-                options={[
-                  { value: "", label: "Tất cả kho" },
-                  ...warehouses.map((warehouse) => ({
-                    value: String(warehouse.id),
-                    label: warehouse.name,
-                  })),
-                ]}
-                buttonClassName="w-full lg:w-72"
-              />
             </div>
 
-            <div className="mx-6 mb-6 overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
-              <table className="w-full min-w-[1540px] text-left text-sm">
-                <thead className="border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/60">
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="module-table w-full text-sm">
+                <thead className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
                   <tr>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Kho</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Mã nguyên liệu</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Tên nguyên liệu</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Phân loại</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Số lượng</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Trạng thái tồn</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Ngày nhập gần nhất</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Ngày xuất gần nhất</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Số lần xuất</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Đơn vị</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium text-gray-600 dark:text-gray-300">Cập nhật lúc</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-center font-medium text-gray-600 dark:text-gray-300">Tác vụ</th>
+                    <th className="whitespace-nowrap px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Kho</th>
+                    <th className="whitespace-nowrap px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Mã nguyên liệu</th>
+                    <th className="whitespace-nowrap px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Tên nguyên liệu</th>
+                    <th className="whitespace-nowrap px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Phân loại</th>
+                    <th className="whitespace-nowrap px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Số lượng</th>
+                    <th className="whitespace-nowrap px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Trạng thái tồn</th>
+                    <th className="whitespace-nowrap px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Nhập gần nhất</th>
+                    <th className="whitespace-nowrap px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Xuất gần nhất</th>
+                    <th className="whitespace-nowrap px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Số lần xuất</th>
+                    <th className="whitespace-nowrap px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Đơn vị</th>
+                    <th className="whitespace-nowrap px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Cập nhật lúc</th>
+                    <th className="whitespace-nowrap px-6 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Tác vụ</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {paginatedItems.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="px-4 py-10 text-center text-gray-500 dark:text-gray-400">
+                      <td colSpan={12} className="px-6 py-10 text-center text-gray-500 dark:text-gray-400">
                         Không có dữ liệu tồn kho
                       </td>
                     </tr>
                   ) : (
                     paginatedItems.map((item) => (
-                      <tr key={`${item.warehouseId}-${item.materialId}`} className="transition-colors odd:bg-white even:bg-gray-50/60 hover:bg-blue-50/60 dark:odd:bg-transparent dark:even:bg-gray-800/20 dark:hover:bg-blue-900/20">
-                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
+                      <tr key={`${item.warehouseId}-${item.materialId}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                        <td className="px-6 py-4 font-medium text-gray-900 dark:text-gray-100">
                           <div className="max-w-[160px] truncate" title={item.warehouseName}>
                             {item.warehouseName}
                           </div>
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-gray-900 dark:text-gray-100">{item.materialCode}</td>
-                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100">
+                        <td className="px-6 py-4 font-mono text-xs font-bold tracking-tight text-gray-900 dark:text-white">{item.materialCode}</td>
+                        <td className="px-6 py-4 text-gray-900 dark:text-gray-100">
                           <div className="max-w-[180px] truncate" title={item.materialName}>
                             {item.materialName}
                           </div>
                         </td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex max-w-[150px] truncate rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" title={item.categoryName}>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 shadow-[0_0_0_1px_rgba(59,130,246,0.25)] dark:bg-blue-900/20 dark:text-blue-300 max-w-[140px] truncate" title={item.categoryName}>
                             {item.categoryName}
                           </span>
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{item.quantity.toLocaleString("vi-VN")}</td>
-                        <td className="px-4 py-3">
-                          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${getStockBadgeClass(item.quantity)}`}>
+                        <td className="px-6 py-4 font-semibold text-gray-900 dark:text-gray-100">{item.quantity.toLocaleString("vi-VN")}</td>
+                        <td className="px-6 py-4">
+                          <span className={`status-pill ${getStockBadgeClass(item.quantity)}`}>
                             {getStockLabel(item.quantity)}
                           </span>
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(item.lastImportDate)}</td>
-                        <td className="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(item.lastExportDate)}</td>
-                        <td className="px-4 py-3">
-                          <span className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                        <td className="whitespace-nowrap px-6 py-4 text-gray-600 dark:text-gray-400">{formatDateTime(item.lastImportDate)}</td>
+                        <td className="whitespace-nowrap px-6 py-4 text-gray-600 dark:text-gray-400">{formatDateTime(item.lastExportDate)}</td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700 shadow-[0_0_0_1px_rgba(139,92,246,0.25)] dark:bg-violet-900/20 dark:text-violet-300">
                             {Number(item.exportCount || 0).toLocaleString("vi-VN")}
                           </span>
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">{item.unitName}</td>
-                        <td className="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(item.updatedDate)}</td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="whitespace-nowrap px-6 py-4 text-gray-600 dark:text-gray-400">{item.unitName}</td>
+                        <td className="whitespace-nowrap px-6 py-4 text-gray-600 dark:text-gray-400">{formatDateTime(item.updatedDate)}</td>
+                        <td className="px-6 py-4 text-center">
                           <ActionDropdown onView={() => handleViewDetail(item)} />
                         </td>
                       </tr>
@@ -465,108 +466,78 @@ export default function StockByWarehouse() {
               startItem={paginatedItems.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}
               endItem={currentPage * itemsPerPage}
               onPageChange={setCurrentPage}
-              labelPrefix="Hien thi"
+              labelPrefix="Hiển thị"
             />
           </div>
         </div>
       )}
 
-      {/* Detail Modal */}
       {showDetail && selectedItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
           <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900">
             <div className="flex items-center justify-between border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white px-6 py-4 dark:border-gray-800 dark:from-blue-950/30 dark:to-transparent">
-              <h3 className="text-xl font-semibold text-black dark:text-white">
-                Chi Tiết Tồn Kho
-              </h3>
+              <div>
+                <h3 className="text-base font-semibold text-gray-900 dark:text-white">Chi Tiết Tồn Kho</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{selectedItem.warehouseName}</p>
+              </div>
               <button
                 onClick={() => setShowDetail(false)}
-                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300 transition-colors"
               >
                 ✕
               </button>
             </div>
 
-            <div className="space-y-4 p-6">
-              <div>
-                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  Kho
-                </label>
-                <p className="text-black dark:text-white">{selectedItem.warehouseName}</p>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl border border-gray-100 dark:border-gray-800 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Mã nguyên liệu</p>
+                  <p className="mt-1 font-mono text-sm font-bold tracking-tight text-gray-900 dark:text-white">{selectedItem.materialCode}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 dark:border-gray-800 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Phân loại</p>
+                  <p className="mt-1 text-sm text-gray-900 dark:text-white">{selectedItem.categoryName}</p>
+                </div>
+                <div className="col-span-2 rounded-xl border border-gray-100 dark:border-gray-800 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Tên nguyên liệu</p>
+                  <p className="mt-1 text-sm text-gray-900 dark:text-white">{selectedItem.materialName}</p>
+                </div>
+                <div className="rounded-xl border border-blue-100 bg-blue-50 dark:border-blue-500/20 dark:bg-blue-500/10 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-blue-600 dark:text-blue-300">Số lượng</p>
+                  <p className="mt-1 text-2xl font-semibold text-blue-700 dark:text-blue-300">{selectedItem.quantity.toLocaleString("vi-VN")}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 dark:border-gray-800 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Đơn vị</p>
+                  <p className="mt-1 text-sm text-gray-900 dark:text-white">{selectedItem.unitName}</p>
+                </div>
               </div>
 
-              <div>
-                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  Mã Nguyên Liệu
-                </label>
-                <p className="text-black dark:text-white">{selectedItem.materialCode}</p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  Tên Nguyên Liệu
-                </label>
-                <p className="text-black dark:text-white">{selectedItem.materialName}</p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  Phân Loại
-                </label>
-                <p className="text-black dark:text-white">{selectedItem.categoryName}</p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  Số Lượng
-                </label>
-                <p className="text-xl font-semibold text-blue-600 dark:text-blue-400">{selectedItem.quantity}</p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  Đơn Vị
-                </label>
-                <p className="text-black dark:text-white">{selectedItem.unitName}</p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  Cập Nhật Lúc
-                </label>
-                <p className="text-black dark:text-white">
-                  {selectedItem.updatedDate
-                    ? new Date(selectedItem.updatedDate).toLocaleString("vi-VN")
-                    : "N/A"}
-                </p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  Ngày Nhập Gần Nhất
-                </label>
-                <p className="text-black dark:text-white">{formatDateTime(selectedItem.lastImportDate)}</p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  Ngày Xuất Gần Nhất
-                </label>
-                <p className="text-black dark:text-white">{formatDateTime(selectedItem.lastExportDate)}</p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  Số Lần Xuất
-                </label>
-                <p className="text-black dark:text-white">{Number(selectedItem.exportCount || 0).toLocaleString("vi-VN")}</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl border border-gray-100 dark:border-gray-800 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Nhập gần nhất</p>
+                  <p className="mt-1 text-xs text-gray-700 dark:text-gray-300">{formatDateTime(selectedItem.lastImportDate)}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 dark:border-gray-800 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Xuất gần nhất</p>
+                  <p className="mt-1 text-xs text-gray-700 dark:text-gray-300">{formatDateTime(selectedItem.lastExportDate)}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 dark:border-gray-800 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Số lần xuất</p>
+                  <p className="mt-1 text-sm font-semibold text-violet-700 dark:text-violet-300">{Number(selectedItem.exportCount || 0).toLocaleString("vi-VN")}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 dark:border-gray-800 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Cập nhật lúc</p>
+                  <p className="mt-1 text-xs text-gray-700 dark:text-gray-300">
+                    {selectedItem.updatedDate ? new Date(selectedItem.updatedDate).toLocaleString("vi-VN") : "N/A"}
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div className="mt-2 flex justify-end gap-2 border-t border-gray-200 px-6 py-4 dark:border-gray-800">
+            <div className="flex justify-end border-t border-gray-200 dark:border-gray-800 px-6 py-4">
               <button
                 onClick={() => setShowDetail(false)}
-                className="inline-flex items-center justify-center rounded-md border border-stroke px-4 py-2 text-center font-medium text-gray-700 hover:bg-gray-100 dark:border-strokedark dark:text-gray-300 dark:hover:bg-gray-700"
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
               >
                 Đóng
               </button>

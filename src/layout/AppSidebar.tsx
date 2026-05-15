@@ -33,7 +33,6 @@ const navItems: NavItem[] = [
       { name: "Nhập kho", path: "/nhap-kho" },
       { name: "Xuất kho", path: "/xuat-kho" },
       { name: "Kiểm kê", path: "/kiem-ke" },
-      { name: "Báo cáo XNT", path: "/bao-cao-xuat-nhap-ton" },
     ],
   },
   {
@@ -43,6 +42,7 @@ const navItems: NavItem[] = [
       { name: "Vật tư", path: "/quan-ly-nguyen-lieu" },
       { name: "Nhà cung cấp", path: "/quan-ly-nha-cung-cap" },
       { name: "Quản lý kho", path: "/quan-ly-kho" },
+      { name: "Báo cáo thống kê", path: "/bao-cao-xuat-nhap-ton" },
     ],
   },
 

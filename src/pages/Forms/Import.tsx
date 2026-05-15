@@ -1,10 +1,14 @@
 "use client";
+import { Search, SlidersHorizontal, ArrowUp, ArrowDown } from "lucide-react";
 import { getImportApiErrorMessage, importService } from "../../services/importService";
 import { materialService } from "../../services/materialService";
 import { supplierService } from "../../services/supplierService";
 import { unitService } from "../../services/unitService";
 import { warehouseService } from "../../services/warehouseService";
+import { purchaseOrderService } from "../../services/purchaseOrderService";
+import { hydrateMaterialsItemType, resolveMaterialItemType } from "../../services/itemTypeService";
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import CustomSelect from "../../components/common/CustomSelect";
@@ -48,12 +52,17 @@ interface Receipt {
   tongTien: number;
   soChungTu?: string;
   trangThai: string;
+  createdBy?: string;
+  approvedBy?: string;
+  approvedAt?: string;
   materials: Material[];
 }
 
 // Page: Quản lý nhập kho
 export default function NhapKho() {
   const { canApprove } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [prefillDone, setPrefillDone] = useState(false);
   // State: Danh sách phiếu nhập
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   // State: Trạng thái loading
@@ -133,11 +142,101 @@ export default function NhapKho() {
     fetchWarehouses();
   }, []);
 
+  // Pre-fill form from purchase order when navigated from notification
+  useEffect(() => {
+    const purchaseOrderId = searchParams.get("purchaseOrderId");
+    if (!purchaseOrderId || prefillDone) return;
+    if (
+      availableMaterials.length === 0 ||
+      availableUnits.length === 0 ||
+      availableSuppliers.length === 0
+    )
+      return;
+
+    const loadPurchaseOrder = async () => {
+      try {
+        const po = await purchaseOrderService.getPurchaseOrderById(
+          Number(purchaseOrderId),
+        );
+
+        // Pre-fill supplier
+        const supplier = availableSuppliers.find(
+          (s: any) => s.id === po.supplierId,
+        );
+        if (supplier) {
+          setSelectedSupplierId(po.supplierId);
+          setFormData((prev) => ({ ...prev, tenNCC: supplier.name || "" }));
+        }
+
+        // Pre-fill materials from purchase order details
+        const prefillMaterials: Material[] = (
+          po.purchaseOrderDetails || []
+        ).map((detail, idx) => {
+          const mat = availableMaterials.find(
+            (m: any) => m.id === detail.materialId,
+          );
+          const unit = availableUnits.find((u: any) => u.id === detail.unitId);
+          return {
+            stt: idx + 1,
+            id: `new_${Date.now()}_${idx}`,
+            materialId: detail.materialId,
+            unitId: detail.unitId,
+            maHang: detail.material?.code || mat?.code || "",
+            tenHang: detail.material?.name || mat?.name || "",
+            donVi: unit?.name || mat?.unitName || "",
+            soLuong: detail.quantity,
+            donGia: detail.unitPrice,
+          };
+        });
+
+        setMaterials(prefillMaterials);
+        setView("create");
+        setPrefillDone(true);
+        setSearchParams({});
+        showToast(
+          `Đã điền thông tin từ đơn đặt hàng ${po.code}. Vui lòng kiểm tra và lưu phiếu nhập.`,
+          "success",
+        );
+      } catch (err) {
+        console.error("Lỗi tải đơn đặt hàng:", err);
+        showToast("Không thể tải thông tin đơn đặt hàng", "error");
+        setPrefillDone(true);
+      }
+    };
+
+    loadPurchaseOrder();
+  }, [availableMaterials, availableUnits, availableSuppliers, searchParams, prefillDone]);
+
+  // Auto-open detail view when navigated from notification (?id=...)
+  useEffect(() => {
+    const openId = searchParams.get("id");
+    if (!openId || receipts.length === 0) return;
+    const receipt = receipts.find((r) => r.id === openId);
+    if (receipt) {
+      setSelectedReceipt(receipt);
+      setView("detail");
+    } else {
+      fetchImportReceiptDetail(openId)
+        .then((r) => { setSelectedReceipt(r); setView("detail"); })
+        .catch((err) => console.error("Không thể tải phiếu nhập:", err));
+    }
+    setSearchParams({});
+  }, [receipts, searchParams]);
+
+  // Warehouse typeId → material itemType mapping
+  const getWarehouseItemType = (typeId?: number): string | null => {
+    if (typeId === 1) return "material";
+    if (typeId === 2) return "goods";
+    if (typeId === 3) return "asset";
+    return null;
+  };
+
   const fetchMaterials = async () => {
     try {
       const data = await materialService.getAllMaterials();
-      setAvailableMaterials(data || []);
-      return data || [];
+      const hydrated = hydrateMaterialsItemType(data || []);
+      setAvailableMaterials(hydrated);
+      return hydrated;
     } catch (err) {
       console.error("Lỗi tải danh sách vật tư", err);
       return [];
@@ -189,6 +288,9 @@ export default function NhapKho() {
           tongTien: item.totalAmount || 0,
           soChungTu: item.documentNo,
           trangThai: item.status,
+          createdBy: item.createdBy || "",
+          approvedBy: item.approvedBy || "",
+          approvedAt: item.approvedAt || "",
           materials: (item.importReceiptDetails || []).map(
             (detail: any, idx: number) => {
               const mat = materialsList.find(
@@ -435,7 +537,13 @@ export default function NhapKho() {
     setMaterialSearchTerm("");
   };
 
+  // Filter materials by warehouse type when a warehouse is selected
+  const selectedWarehouseObj = availableWarehouses.find((w: any) => w.id === selectedWarehouseId);
+  const allowedItemType = getWarehouseItemType(selectedWarehouseObj?.typeId);
+
   const filteredAvailableMaterials = availableMaterials.filter((mat: any) => {
+    // Enforce warehouse-type compatibility
+    if (allowedItemType && resolveMaterialItemType(mat) !== allowedItemType) return false;
     if (!materialSearchTerm) return true;
     const term = materialSearchTerm.toLowerCase();
     return (
@@ -540,6 +648,9 @@ export default function NhapKho() {
       warehouseId: receipt.warehouseId || 1,
       status: normalizeReceiptStatus(status),
       createdAt: new Date().toISOString(),
+      createdBy: receipt.createdBy || undefined,
+      approvedBy: receipt.approvedBy || undefined,
+      approvedAt: receipt.approvedAt || undefined,
       supplierInvoiceNo: receipt.soHoaDonNCC || "",
       documentNo: receipt.soChungTu || "",
       totalAmount,
@@ -573,6 +684,9 @@ export default function NhapKho() {
       tongTien: data.totalAmount || 0,
       soChungTu: data.documentNo,
       trangThai: data.status || RECEIPT_STATUS.PENDING,
+      createdBy: data.createdBy || "",
+      approvedBy: data.approvedBy || "",
+      approvedAt: data.approvedAt || "",
       materials: (data.importReceiptDetails || []).map(
         (detail: any, idx: number) => {
           const mat = materialsList.find(
@@ -678,6 +792,19 @@ export default function NhapKho() {
     if (!selectedSupplierId) {
       showToast("Vui lòng chọn nhà cung cấp từ danh sách", "error");
       return;
+    }
+
+    // Validate warehouse-type compatibility
+    if (selectedWarehouseObj && allowedItemType) {
+      const incompatible = materials.find((m) => {
+        const mat = availableMaterials.find((a: any) => Number(a.id) === m.materialId);
+        return resolveMaterialItemType(mat) !== allowedItemType;
+      });
+      if (incompatible) {
+        const typeLabel = selectedWarehouseObj.typeId === 3 ? "Tài sản" : selectedWarehouseObj.typeId === 2 ? "Hàng hóa" : "Vật tư";
+        showToast(`Vật tư "${incompatible.tenHang}" không phù hợp với kho ${typeLabel}. Vui lòng chọn đúng loại kho.`, "error");
+        return;
+      }
     }
 
     const selectedSupplier = availableSuppliers.find(
@@ -1068,19 +1195,7 @@ export default function NhapKho() {
           <div className="p-5 lg:p-6 border-b border-gray-200 dark:border-gray-800">
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
               <div className="relative w-full sm:w-72">
-                <svg
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                  />
-                </svg>
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
                   placeholder="Tìm phiếu hoặc nhà cung cấp..."
@@ -1089,7 +1204,7 @@ export default function NhapKho() {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  className="h-[48px] w-full pl-10 px-4 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent shadow-sm transition-all duration-200"
                 />
               </div>
               <div className="flex gap-2 w-full sm:w-auto">
@@ -1097,21 +1212,9 @@ export default function NhapKho() {
                   <button
                     type="button"
                     onClick={() => setIsFilterOpen(!isFilterOpen)}
-                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
+                    className="inline-flex items-center gap-2 h-[48px] px-4 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200 shadow-sm"
                   >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
-                      />
-                    </svg>
+                    <SlidersHorizontal className="w-4 h-4" />
                     Bộ lọc
                   </button>
 
@@ -1187,7 +1290,7 @@ export default function NhapKho() {
 
                           <button
                             onClick={() => setIsFilterOpen(false)}
-                            className="w-full px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                            className="module-primary-btn w-full px-4 py-2.5 font-medium text-white transition-colors"
                           >
                             Áp dụng
                           </button>
@@ -1210,9 +1313,9 @@ export default function NhapKho() {
                   onClick={() =>
                     setSortOrder(sortOrder === "asc" ? "desc" : "asc")
                   }
-                  className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all flex-shrink-0"
+                  className="flex items-center justify-center h-[48px] w-12 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all flex-shrink-0 shadow-sm"
                 >
-                  {sortOrder === "asc" ? "↑" : "↓"}
+                  {sortOrder === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
                 </button>
               </div>
             </div>
@@ -1270,7 +1373,7 @@ export default function NhapKho() {
                       key={receipt.id}
                       className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                     >
-                      <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
+                      <td className="px-6 py-4 font-mono text-xs font-bold tracking-tight text-gray-900 dark:text-white">
                         {receipt.soPhieu}
                       </td>
                       <td className="px-6 py-4 text-gray-600 dark:text-gray-400">
@@ -1373,7 +1476,7 @@ export default function NhapKho() {
             startItem={filteredReceipts.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}
             endItem={currentPage * itemsPerPage}
             onPageChange={setCurrentPage}
-            labelPrefix="Hien thi"
+            labelPrefix="Hiển thị"
           />
         </div>
       </>
@@ -2399,6 +2502,29 @@ export default function NhapKho() {
                     )}
                   </div>
                 )}
+
+                <div className="text-xs space-y-1 mb-2 text-gray-600 dark:text-gray-400">
+                  {selectedReceipt.createdBy && (
+                    <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-purple-50 dark:bg-purple-500/10">
+                      <span className="text-purple-700 dark:text-purple-300">Người tạo:</span>
+                      <span className="font-medium text-purple-900 dark:text-purple-100">{selectedReceipt.createdBy}</span>
+                    </div>
+                  )}
+                  {selectedReceipt.approvedBy && (
+                    <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-green-50 dark:bg-green-500/10">
+                      <span className="text-green-700 dark:text-green-300">Xác nhận bởi:</span>
+                      <span className="font-medium text-green-900 dark:text-green-100">{selectedReceipt.approvedBy}</span>
+                    </div>
+                  )}
+                  {selectedReceipt.approvedAt && (
+                    <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-indigo-50 dark:bg-indigo-500/10">
+                      <span className="text-indigo-700 dark:text-indigo-300">Thời gian xác nhận:</span>
+                      <span className="font-medium text-indigo-900 dark:text-indigo-100">
+                        {new Date(selectedReceipt.approvedAt).toLocaleString("vi-VN")}
+                      </span>
+                    </div>
+                  )}
+                </div>
 
                 <div className="rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-500/10 dark:to-teal-500/10 p-3 border border-emerald-200 dark:border-emerald-500/30">
                   <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 mb-1">TỔNG GIÁ TRỊ</p>

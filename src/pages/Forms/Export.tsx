@@ -1,5 +1,6 @@
 "use client";
 
+import { Search, SlidersHorizontal, ArrowUp, ArrowDown } from "lucide-react";
 import axios from "axios";
 import { useEffect, useRef, useState } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
@@ -14,6 +15,7 @@ import { materialService } from "../../services/materialService";
 import { hydrateMaterialsItemType, resolveMaterialItemType } from "../../services/itemTypeService";
 import { unitService } from "../../services/unitService";
 import { warehouseService } from "../../services/warehouseService";
+import { useSearchParams } from "react-router";
 import { useAuth } from "../../context/AuthContext";
 
 interface MaterialLine {
@@ -39,6 +41,9 @@ interface Receipt {
   lyDo: string;
   soChungTu?: string;
   trangThai: string;
+  createdBy?: string;
+  approvedBy?: string;
+  approvedAt?: string;
   materials: MaterialLine[];
 }
 
@@ -59,6 +64,7 @@ const EXPORT_REASON_OTHER = "Khác";
 
 export default function XuatKho() {
   const { canApprove } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<"list" | "create" | "edit" | "detail">(
@@ -138,6 +144,22 @@ export default function XuatKho() {
     });
     fetchWarehouses();
   }, []);
+
+  // Auto-open detail view when navigated from notification (?id=...)
+  useEffect(() => {
+    const openId = searchParams.get("id");
+    if (!openId || receipts.length === 0) return;
+    const receipt = receipts.find((r) => r.id === openId);
+    if (receipt) {
+      setSelectedReceipt(receipt);
+      setView("detail");
+    } else {
+      fetchExportReceiptDetail(openId)
+        .then((r) => { setSelectedReceipt(r); setView("detail"); })
+        .catch((err) => console.error("Không thể tải phiếu xuất:", err));
+    }
+    setSearchParams({});
+  }, [receipts, searchParams]);
 
   const fetchMaterials = async () => {
     try {
@@ -242,6 +264,9 @@ export default function XuatKho() {
       trangThai: normalizeReceiptStatus(
         item.status || item.trangThai || RECEIPT_STATUS.PENDING,
       ),
+      createdBy: item.createdBy || "",
+      approvedBy: item.approvedBy || "",
+      approvedAt: item.approvedAt || "",
       materials: mappedMaterials,
     };
   };
@@ -527,7 +552,21 @@ export default function XuatKho() {
     setMaterialSearchTerm("");
   };
 
+  // Warehouse typeId → material itemType mapping
+  const getWarehouseItemType = (typeId?: number): string | null => {
+    if (typeId === 1) return "material";
+    if (typeId === 2) return "goods";
+    if (typeId === 3) return "asset";
+    return null;
+  };
+
+  // Resolve selected warehouse object and its allowed item type
+  const selectedWarehouseObj = availableWarehouses.find((w: any) => Number(w.id) === Number(selectedWarehouseId));
+  const allowedItemType = getWarehouseItemType(selectedWarehouseObj?.typeId);
+
   const filteredAvailableMaterials = availableMaterials.filter((mat: any) => {
+    // Enforce warehouse-type compatibility
+    if (allowedItemType && resolveMaterialItemType(mat) !== allowedItemType) return false;
     if (!materialSearchTerm) return true;
     const term = materialSearchTerm.toLowerCase();
     return (
@@ -597,6 +636,9 @@ export default function XuatKho() {
       totalAmount,
       status: normalizeReceiptStatus(status),
       createdAt: new Date().toISOString(),
+      createdBy: receipt.createdBy || undefined,
+      approvedBy: receipt.approvedBy || undefined,
+      approvedAt: receipt.approvedAt || undefined,
       exportReceiptDetails: receipt.materials.map((m) => ({
         ...(m.id.startsWith("new_") ? {} : { id: Number(m.id) }),
         materialId: m.materialId,
@@ -756,6 +798,19 @@ export default function XuatKho() {
     if (hasAssetLines && formData.lyDo === EXPORT_REASON_SALE) {
       showToast("Tài sản không áp dụng lý do xuất bán. Vui lòng chọn cấp phát hoặc chuyển nội bộ.", "error");
       return;
+    }
+
+    // Validate warehouse-type compatibility
+    if (selectedWarehouseObj && allowedItemType) {
+      const incompatible = materials.find((m) => {
+        const mat = availableMaterials.find((a: any) => Number(a.id) === m.materialId);
+        return resolveMaterialItemType(mat) !== allowedItemType;
+      });
+      if (incompatible) {
+        const typeLabel = selectedWarehouseObj.typeId === 3 ? "Tài sản" : selectedWarehouseObj.typeId === 2 ? "Hàng hóa" : "Vật tư";
+        showToast(`Vật tư "${incompatible.tenHang}" không phù hợp với kho ${typeLabel}. Vui lòng chọn đúng loại kho.`, "error");
+        return;
+      }
     }
 
     const currentReceiptStatus = normalizeReceiptStatus(
@@ -1188,19 +1243,7 @@ export default function XuatKho() {
           <div className="p-5 lg:p-6 border-b border-gray-200 dark:border-gray-800">
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
               <div className="relative w-full sm:w-72">
-                <svg
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                  />
-                </svg>
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
                   placeholder="Tìm phiếu hoặc người nhận..."
@@ -1209,7 +1252,7 @@ export default function XuatKho() {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  className="h-[48px] w-full pl-10 px-4 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent shadow-sm transition-all duration-200"
                 />
               </div>
 
@@ -1218,21 +1261,9 @@ export default function XuatKho() {
                   <button
                     type="button"
                     onClick={() => setIsFilterOpen(!isFilterOpen)}
-                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
+                    className="inline-flex items-center gap-2 h-[48px] px-4 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200 shadow-sm"
                   >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
-                      />
-                    </svg>
+                    <SlidersHorizontal className="w-4 h-4" />
                     Bộ lọc
                   </button>
 
@@ -1308,7 +1339,7 @@ export default function XuatKho() {
 
                           <button
                             onClick={() => setIsFilterOpen(false)}
-                            className="w-full px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                            className="module-primary-btn w-full px-4 py-2.5 font-medium text-white transition-colors"
                           >
                             Áp dụng
                           </button>
@@ -1332,9 +1363,9 @@ export default function XuatKho() {
                   onClick={() =>
                     setSortOrder(sortOrder === "asc" ? "desc" : "asc")
                   }
-                  className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all flex-shrink-0"
+                  className="flex items-center justify-center h-[48px] w-12 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all flex-shrink-0 shadow-sm"
                 >
-                  {sortOrder === "asc" ? "↑" : "↓"}
+                  {sortOrder === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
                 </button>
               </div>
             </div>
@@ -1392,7 +1423,7 @@ export default function XuatKho() {
                       key={receipt.id}
                       className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                     >
-                      <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
+                      <td className="px-6 py-4 font-mono text-xs font-bold tracking-tight text-gray-900 dark:text-white">
                         {receipt.soPhieu}
                       </td>
                       <td className="px-6 py-4 text-gray-600 dark:text-gray-400">
@@ -1495,7 +1526,7 @@ export default function XuatKho() {
             startItem={filteredReceipts.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}
             endItem={currentPage * itemsPerPage}
             onPageChange={setCurrentPage}
-            labelPrefix="Hien thi"
+            labelPrefix="Hiển thị"
           />
         </div>
       </>
@@ -2203,25 +2234,40 @@ export default function XuatKho() {
 
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div className="rounded-xl border border-sky-200 bg-white/80 p-4 backdrop-blur-sm dark:border-sky-500/30 dark:bg-sky-500/10">
-              <p className="text-xs font-medium uppercase tracking-wide text-sky-700 dark:text-sky-300">
-                Tổng giá trị
-              </p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-sky-700 dark:text-sky-300">
+                  Tổng giá trị
+                </p>
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300">
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 10v-1m-6-6h12" /></svg>
+                </span>
+              </div>
               <p className="mt-2 text-xl font-semibold text-sky-900 dark:text-sky-100">
                 {totalAmount.toLocaleString("vi-VN")}₫
               </p>
             </div>
             <div className="rounded-xl border border-indigo-200 bg-white/80 p-4 backdrop-blur-sm dark:border-indigo-500/30 dark:bg-indigo-500/10">
-              <p className="text-xs font-medium uppercase tracking-wide text-indigo-700 dark:text-indigo-300">
-                Số mặt hàng
-              </p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-indigo-700 dark:text-indigo-300">
+                  Số mặt hàng
+                </p>
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 13V7a2 2 0 00-2-2h-3M4 7v10a2 2 0 002 2h12a2 2 0 002-2v-4M8 7h4" /></svg>
+                </span>
+              </div>
               <p className="mt-2 text-xl font-semibold text-indigo-900 dark:text-indigo-100">
                 {selectedReceipt.materials.length}
               </p>
             </div>
             <div className="rounded-xl border border-emerald-200 bg-white/80 p-4 backdrop-blur-sm dark:border-emerald-500/30 dark:bg-emerald-500/10">
-              <p className="text-xs font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
-                Tổng số lượng
-              </p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                  Tổng số lượng
+                </p>
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7h18M6 11h12m-9 4h6" /></svg>
+                </span>
+              </div>
               <p className="mt-2 text-xl font-semibold text-emerald-900 dark:text-emerald-100">
                 {totalQuantity.toLocaleString("vi-VN")}
               </p>
@@ -2353,18 +2399,11 @@ export default function XuatKho() {
                 </div>
               </div>
 
-              <div className="mb-2 rounded-lg border border-blue-100 bg-gradient-to-r from-blue-50 to-sky-50 p-2.5 dark:border-blue-500/20 dark:from-blue-500/10 dark:to-sky-500/10">
-                <p className="text-xs font-semibold uppercase text-blue-600 dark:text-blue-300">Số phiếu</p>
-                <p className="mt-1 text-sm font-bold text-blue-800 dark:text-blue-100">
-                  {selectedReceipt.soPhieu || "-"}
-                </p>
-              </div>
-
-              <div className="mb-2 rounded-lg border border-amber-100 bg-gradient-to-r from-amber-50 to-orange-50 p-2.5 dark:border-amber-500/20 dark:from-amber-500/10 dark:to-orange-500/10">
-                <p className="text-xs font-semibold uppercase text-amber-600 dark:text-amber-300">Số chứng từ</p>
-                <p className="mt-1 text-sm font-bold text-amber-800 dark:text-amber-100">
-                  {selectedReceipt.soChungTu || "-"}
-                </p>
+              <div className="text-xs space-y-1 mb-2 text-gray-600 dark:text-gray-400">
+                <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-amber-50 dark:bg-amber-500/10">
+                  <span className="text-amber-700 dark:text-amber-300">Số chứng từ:</span>
+                  <span className="font-medium text-amber-900 dark:text-amber-100">{selectedReceipt.soChungTu || "-"}</span>
+                </div>
               </div>
 
               <div className="mb-3 rounded-lg border border-gray-100 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800/50">
@@ -2373,6 +2412,31 @@ export default function XuatKho() {
                   {selectedReceipt.lyDo || "-"}
                 </p>
               </div>
+
+              {(selectedReceipt.createdBy || selectedReceipt.approvedBy || selectedReceipt.approvedAt) && (
+                <div className="text-xs space-y-1 mb-3">
+                  {selectedReceipt.createdBy && (
+                    <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-purple-50 dark:bg-purple-500/10">
+                      <span className="text-purple-700 dark:text-purple-300">Người tạo:</span>
+                      <span className="font-medium text-purple-900 dark:text-purple-100">{selectedReceipt.createdBy}</span>
+                    </div>
+                  )}
+                  {selectedReceipt.approvedBy && (
+                    <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-green-50 dark:bg-green-500/10">
+                      <span className="text-green-700 dark:text-green-300">Xác nhận bởi:</span>
+                      <span className="font-medium text-green-900 dark:text-green-100">{selectedReceipt.approvedBy}</span>
+                    </div>
+                  )}
+                  {selectedReceipt.approvedAt && (
+                    <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-indigo-50 dark:bg-indigo-500/10">
+                      <span className="text-indigo-700 dark:text-indigo-300">Thời gian xác nhận:</span>
+                      <span className="font-medium text-indigo-900 dark:text-indigo-100">
+                        {new Date(selectedReceipt.approvedAt).toLocaleString("vi-VN")}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="rounded-xl border border-emerald-100 bg-gradient-to-r from-emerald-50 to-teal-50 p-3 dark:border-emerald-500/20 dark:from-emerald-500/10 dark:to-teal-500/10">
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-300">

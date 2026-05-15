@@ -1,59 +1,66 @@
 import { createApiClient } from "./apiClient";
 
+/** Shape returned by GET /api/Notification */
 export interface Notification {
-  id?: number;
-  type: string;
+  key: string;        // stable composite key, e.g. "IMPORT_12"
+  id: number;
+  type: string;       // IMPORT | EXPORT | PURCHASE_ORDER | STOCK_CHECK | LOW_STOCK
   title: string;
   message: string;
-  icon: string;
-  createdAt?: string;
-  priority?: string;
+  targetUrl: string;  // route to navigate on click
+  createdAt: string;
+  priority: string;   // normal | high | critical
 }
+
+const STORAGE_READ_KEY = "notif_read_keys";
+const STORAGE_DISMISS_KEY = "notif_dismissed_keys";
+
+function loadSet(storageKey: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    return raw ? new Set<string>(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveSet(storageKey: string, set: Set<string>): void {
+  localStorage.setItem(storageKey, JSON.stringify([...set]));
+}
+
+export const notifStorage = {
+  getReadKeys: () => loadSet(STORAGE_READ_KEY),
+  addReadKey: (key: string) => {
+    const s = loadSet(STORAGE_READ_KEY);
+    s.add(key);
+    saveSet(STORAGE_READ_KEY, s);
+  },
+  markAllRead: (keys: string[]) => {
+    const s = loadSet(STORAGE_READ_KEY);
+    keys.forEach((k) => s.add(k));
+    saveSet(STORAGE_READ_KEY, s);
+  },
+
+  getDismissedKeys: () => loadSet(STORAGE_DISMISS_KEY),
+  addDismissedKey: (key: string) => {
+    const s = loadSet(STORAGE_DISMISS_KEY);
+    s.add(key);
+    saveSet(STORAGE_DISMISS_KEY, s);
+  },
+};
 
 const apiClient = createApiClient("/api/Notification");
 
 export const notificationService = {
-  // GET all notifications
+  /** GET /api/Notification — notifications generated dynamically from DB state (no DB table) */
   getAllNotifications: async (): Promise<Notification[]> => {
     try {
-      const response = await apiClient.get<Notification[]>("/List");
+      const response = await apiClient.get<Notification[]>("");
       return response.data || [];
     } catch (error) {
       console.error("Error fetching notifications:", error);
       return [];
     }
   },
-
-  // POST create new notification
-  createNotification: async (
-    notification: Omit<Notification, "id" | "createdAt">
-  ): Promise<Notification> => {
-    try {
-      const response = await apiClient.post<Notification>("/Add", notification);
-      return response.data;
-    } catch (error) {
-      console.error("Error creating notification:", error);
-      throw error;
-    }
-  },
-
-  // DELETE notification by ID
-  deleteNotification: async (id: number): Promise<void> => {
-    try {
-      await apiClient.delete(`/${id}`);
-    } catch (error) {
-      console.error("Error deleting notification:", error);
-      throw error;
-    }
-  },
-
-  // DELETE all notifications
-  deleteAllNotifications: async (): Promise<void> => {
-    try {
-      await apiClient.delete("/DeleteAll");
-    } catch (error) {
-      console.error("Error deleting all notifications:", error);
-      throw error;
-    }
-  },
 };
+

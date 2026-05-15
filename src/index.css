@@ -644,61 +644,96 @@ span.flatpickr-weekday,
 .status-pill {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   border-radius: 9999px;
-  padding: 0.375rem 0.75rem;
+  padding: 0.25rem 0.625rem;
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1;
+  white-space: nowrap;
+}
+
+.status-pill::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+  opacity: 0.65;
+  flex-shrink: 0;
 }
 
 .status-draft {
   background-color: #f3f4f6;
-  color: #374151;
+  color: #6b7280;
+  box-shadow: 0 0 0 1px #d1d5db;
 }
 
 .status-pending {
-  background-color: #ffedd5;
+  background-color: #fff7ed;
   color: #c2410c;
+  box-shadow: 0 0 0 1px #fed7aa;
+}
+
+.status-submitted {
+  background-color: #fffbeb;
+  color: #92400e;
+  box-shadow: 0 0 0 1px #fde68a;
 }
 
 .status-confirmed {
-  background-color: #dbeafe;
-  color: #1d4ed8;
+  background-color: #ecfdf5;
+  color: #047857;
+  box-shadow: 0 0 0 1px #a7f3d0;
 }
 
 .status-delivered {
-  background-color: #d1fae5;
-  color: #047857;
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  box-shadow: 0 0 0 1px #bfdbfe;
 }
 
 .status-cancelled {
-  background-color: #fee2e2;
+  background-color: #fef2f2;
   color: #b91c1c;
+  box-shadow: 0 0 0 1px #fecaca;
 }
 
 .dark .status-draft {
-  background-color: rgba(107, 114, 128, 0.25);
-  color: #d1d5db;
+  background-color: rgba(107, 114, 128, 0.2);
+  color: #9ca3af;
+  box-shadow: 0 0 0 1px rgba(107, 114, 128, 0.3);
 }
 
 .dark .status-pending {
-  background-color: rgba(249, 115, 22, 0.2);
+  background-color: rgba(249, 115, 22, 0.15);
   color: #fdba74;
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.3);
+}
+
+.dark .status-submitted {
+  background-color: rgba(245, 158, 11, 0.15);
+  color: #fcd34d;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.3);
 }
 
 .dark .status-confirmed {
-  background-color: rgba(59, 130, 246, 0.22);
-  color: #93c5fd;
+  background-color: rgba(16, 185, 129, 0.18);
+  color: #6ee7b7;
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.3);
 }
 
 .dark .status-delivered {
-  background-color: rgba(16, 185, 129, 0.22);
-  color: #6ee7b7;
+  background-color: rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
 }
 
 .dark .status-cancelled {
-  background-color: rgba(239, 68, 68, 0.2);
+  background-color: rgba(239, 68, 68, 0.18);
   color: #fca5a5;
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.3);
 }
 
 .flatpickr-calendar.static {
@@ -918,6 +953,192 @@ span.flatpickr-weekday,
     0px 1px 2px 0px rgba(16, 24, 40, 0.06);
   opacity: 0.8;
   cursor: grabbing; /* Changes the cursor to indicate dragging */
+}
+
+/* ── Calendar: light mode defaults ── */
+.custom-calendar {
+  --fc-page-bg-color: transparent;
+  --fc-neutral-bg-color: rgb(248, 250, 252);
+  --fc-neutral-text-color: rgb(71, 85, 105);
+  --fc-border-color: rgb(226, 232, 240);
+  --fc-today-bg-color: rgba(6, 182, 212, 0.07);
+  --fc-event-bg-color: transparent;
+  --fc-event-border-color: transparent;
+  --fc-button-text-color: rgb(71, 85, 105);
+  --fc-button-bg-color: rgb(255, 255, 255);
+  --fc-button-border-color: rgb(203, 213, 225);
+  --fc-button-hover-bg-color: rgb(241, 245, 249);
+  --fc-button-hover-border-color: rgb(148, 163, 184);
+  --fc-button-active-bg-color: rgba(6, 182, 212, 0.12);
+  --fc-button-active-border-color: rgba(6, 182, 212, 0.4);
+  --fc-highlight-color: rgba(6, 182, 212, 0.1);
+  --fc-non-business-color: rgba(0, 0, 0, 0.03);
+}
+
+/* ── Calendar: dark mode overrides ── */
+.dark .custom-calendar {
+  --fc-page-bg-color: transparent;
+  --fc-neutral-bg-color: rgba(30, 41, 59, 0.6);
+  --fc-neutral-text-color: rgb(148, 163, 184);
+  --fc-border-color: rgba(51, 65, 85, 0.7);
+  --fc-today-bg-color: rgba(6, 182, 212, 0.1);
+  --fc-event-bg-color: transparent;
+  --fc-event-border-color: transparent;
+  --fc-button-text-color: rgb(148, 163, 184);
+  --fc-button-bg-color: rgb(30, 41, 59);
+  --fc-button-border-color: rgba(51, 65, 85, 0.8);
+  --fc-button-hover-bg-color: rgb(51, 65, 85);
+  --fc-button-hover-border-color: rgb(71, 85, 105);
+  --fc-button-active-bg-color: rgba(6, 182, 212, 0.2);
+  --fc-button-active-border-color: rgba(6, 182, 212, 0.5);
+  --fc-highlight-color: rgba(6, 182, 212, 0.15);
+  --fc-non-business-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Transparent backgrounds for all view containers */
+.custom-calendar .fc-view-harness,
+.custom-calendar .fc-daygrid-body,
+.custom-calendar table,
+.custom-calendar td,
+.custom-calendar th {
+  background: transparent;
+}
+
+/* Grid borders — light */
+.custom-calendar .fc-theme-standard td,
+.custom-calendar .fc-theme-standard th,
+.custom-calendar .fc-theme-standard .fc-scrollgrid {
+  border-color: rgb(226, 232, 240);
+}
+/* Grid borders — dark */
+.dark .custom-calendar .fc-theme-standard td,
+.dark .custom-calendar .fc-theme-standard th,
+.dark .custom-calendar .fc-theme-standard .fc-scrollgrid {
+  border-color: rgba(51, 65, 85, 0.7);
+}
+
+/* Header toolbar title — light */
+.custom-calendar .fc-toolbar-title {
+  color: rgb(30, 41, 59);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+/* Header toolbar title — dark */
+.dark .custom-calendar .fc-toolbar-title {
+  color: rgb(226, 232, 240);
+}
+
+/* Day-of-week column headers — light */
+.custom-calendar .fc-col-header-cell {
+  background: rgb(248, 250, 252);
+  border-color: rgb(226, 232, 240);
+}
+.custom-calendar .fc-col-header-cell-cushion {
+  color: rgb(6, 182, 212);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 10px 6px;
+  text-decoration: none;
+}
+/* Day-of-week column headers — dark */
+.dark .custom-calendar .fc-col-header-cell {
+  background: rgba(15, 23, 42, 0.6);
+  border-color: rgba(51, 65, 85, 0.7);
+}
+.dark .custom-calendar .fc-col-header-cell-cushion {
+  color: rgb(94, 234, 212);
+}
+
+/* Day cells */
+.custom-calendar .fc-daygrid-day {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+/* Day cells — light hover */
+.custom-calendar .fc-daygrid-day:hover {
+  background: rgb(241, 245, 249) !important;
+}
+/* Day cells — dark hover */
+.dark .custom-calendar .fc-daygrid-day:hover {
+  background: rgba(30, 41, 59, 0.7) !important;
+}
+
+/* Day number — light */
+.custom-calendar .fc-daygrid-day-number {
+  color: rgb(71, 85, 105);
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 6px 8px;
+  text-decoration: none;
+  line-height: 1;
+}
+/* Day number — dark */
+.dark .custom-calendar .fc-daygrid-day-number {
+  color: rgb(148, 163, 184);
+}
+
+/* Today — both modes share cyan tint */
+.custom-calendar .fc-day-today {
+  background: rgba(6, 182, 212, 0.07) !important;
+}
+.custom-calendar .fc-day-today .fc-daygrid-day-number {
+  color: rgb(6, 182, 212);
+  font-weight: 700;
+}
+.dark .custom-calendar .fc-day-today {
+  background: rgba(6, 182, 212, 0.1) !important;
+}
+.dark .custom-calendar .fc-day-today .fc-daygrid-day-number {
+  color: rgb(34, 211, 238);
+}
+
+/* Other-month days — light */
+.custom-calendar .fc-day-other .fc-daygrid-day-number {
+  color: rgb(203, 213, 225);
+}
+/* Other-month days — dark */
+.dark .custom-calendar .fc-day-other .fc-daygrid-day-number {
+  color: rgba(71, 85, 105, 0.8);
+}
+
+/* Selected day */
+.custom-calendar .fc-day-selected {
+  background: rgba(6, 182, 212, 0.1) !important;
+  box-shadow: inset 0 0 0 1.5px rgba(6, 182, 212, 0.4);
+}
+.custom-calendar .fc-day-selected .fc-daygrid-day-number {
+  color: rgb(6, 182, 212);
+  font-weight: 700;
+}
+.dark .custom-calendar .fc-day-selected {
+  background: rgba(6, 182, 212, 0.14) !important;
+  box-shadow: inset 0 0 0 1.5px rgba(6, 182, 212, 0.45);
+}
+
+/* Navigation / toolbar buttons */
+.custom-calendar .fc-button {
+  padding: 5px 12px !important;
+  border-radius: 8px !important;
+  font-size: 0.8rem !important;
+  font-weight: 600 !important;
+  text-transform: capitalize !important;
+  transition: all 0.15s ease !important;
+}
+.custom-calendar .fc-button:focus {
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.35) !important;
+}
+.custom-calendar .fc-button-active {
+  background: rgba(6, 182, 212, 0.15) !important;
+  border-color: rgba(6, 182, 212, 0.4) !important;
+  color: rgb(6, 182, 212) !important;
+}
+.dark .custom-calendar .fc-button-active {
+  background: rgba(6, 182, 212, 0.2) !important;
+  border-color: rgba(6, 182, 212, 0.5) !important;
+  color: rgb(6, 182, 212) !important;
 }
 
 .custom-calendar .fc-h-event {
