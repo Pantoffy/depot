@@ -857,19 +857,6 @@ export default function PurchaseOrderPage() {
               </label>
               <div ref={supplierDropdownRef} className="relative">
                 <div className="relative">
-                  <svg
-                    className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                    />
-                  </svg>
                   <input
                     type="text"
                     value={supplierSearchTerm}
@@ -884,62 +871,62 @@ export default function PurchaseOrderPage() {
                           selectedSupplierForForm.code
                         : "Gõ tên hoặc mã nhà cung cấp..."
                     }
-                    className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 pl-10 pr-9 text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder-gray-500"
+                    className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 pr-10 text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                   />
-                  {formData.supplierId && (
+                  {formData.supplierId ? (
                     <button
                       type="button"
                       onClick={() => {
                         setFormData((prev) => ({ ...prev, supplierId: "" }));
                         setSupplierSearchTerm("");
                       }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                     >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M6 18L18 6M6 6l12 12"
-                        />
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsSupplierDropdownOpen((p) => !p)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    >
+                      <svg className={`h-4 w-4 transition-transform ${isSupplierDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                       </svg>
                     </button>
                   )}
                 </div>
 
                 {isSupplierDropdownOpen && (
-                  <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg max-h-60 overflow-y-auto">
-                    {filteredSuppliers.length === 0 ? (
-                      <div className="px-3 py-4 text-sm text-gray-500 dark:text-gray-400 text-center">
-                        Không tìm thấy nhà cung cấp
-                      </div>
-                    ) : (
-                      filteredSuppliers.slice(0, 8).map((supplier) => (
-                        <button
-                          key={supplier.id}
-                          type="button"
-                          onClick={() =>
-                            handleSelectSupplier(String(supplier.id || ""))
-                          }
-                          className={`w-full text-left px-3 py-2.5 text-sm hover:bg-cyan-50 dark:hover:bg-cyan-500/10 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-0 ${
-                            formData.supplierId === String(supplier.id || "")
-                              ? "bg-cyan-50 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-300"
-                              : "text-gray-900 dark:text-white"
-                          }`}
-                        >
-                          <span className="font-medium">{supplier.code}</span>
-                          <span className="text-gray-500 dark:text-gray-400">
-                            {" "}
-                            - {supplier.name || "Không tên"}
-                          </span>
-                        </button>
-                      ))
-                    )}
+                  <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                    <ul className="max-h-56 overflow-auto py-1">
+                      {filteredSuppliers.length === 0 ? (
+                        <li className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400 text-center">
+                          Không tìm thấy nhà cung cấp
+                        </li>
+                      ) : (
+                        filteredSuppliers.slice(0, 8).map((supplier) => (
+                          <li key={supplier.id}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleSelectSupplier(String(supplier.id || ""))
+                              }
+                              className={`w-full px-4 py-2.5 text-left text-sm transition-colors ${
+                                formData.supplierId === String(supplier.id || "")
+                                  ? "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-white"
+                                  : "text-gray-800 hover:bg-gray-50 dark:text-gray-100 dark:hover:bg-gray-800/50"
+                              }`}
+                            >
+                              <span className="font-medium">{supplier.code}</span>
+                              <span className="text-gray-500 dark:text-gray-400"> - {supplier.name || "Không tên"}</span>
+                            </button>
+                          </li>
+                        ))
+                      )}
+                    </ul>
                   </div>
                 )}
               </div>

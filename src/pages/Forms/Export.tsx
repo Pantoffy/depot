@@ -90,6 +90,9 @@ export default function XuatKho() {
   const [warehouseSearchTerm, setWarehouseSearchTerm] = useState("");
   const [isWarehouseDropdownOpen, setIsWarehouseDropdownOpen] = useState(false);
   const warehouseDropdownRef = useRef<HTMLDivElement>(null);
+
+  const [isReasonDropdownOpen, setIsReasonDropdownOpen] = useState(false);
+  const reasonDropdownRef = useRef<HTMLDivElement>(null);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<number | null>(
     null,
   );
@@ -130,6 +133,12 @@ export default function XuatKho() {
         !warehouseDropdownRef.current.contains(event.target as Node)
       ) {
         setIsWarehouseDropdownOpen(false);
+      }
+      if (
+        reasonDropdownRef.current &&
+        !reasonDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsReasonDropdownOpen(false);
       }
     };
 
@@ -616,6 +625,13 @@ export default function XuatKho() {
     }
   }, [hasAssetLines, formData.lyDo]);
 
+  const toApiStatus = (s: ReceiptStatusLabel): string => {
+    if (s === RECEIPT_STATUS.DRAFT) return "Draft";
+    if (s === RECEIPT_STATUS.APPROVED) return "Approved";
+    if (s === RECEIPT_STATUS.CANCELLED) return "Cancelled";
+    return "Pending";
+  };
+
   const buildExportReceiptPayload = (
     receipt: Receipt,
     status: ReceiptStatusLabel,
@@ -634,7 +650,7 @@ export default function XuatKho() {
       reason: receipt.lyDo || "",
       documentNo: receipt.soChungTu || "",
       totalAmount,
-      status: normalizeReceiptStatus(status),
+      status: toApiStatus(status),
       createdAt: new Date().toISOString(),
       createdBy: receipt.createdBy || undefined,
       approvedBy: receipt.approvedBy || undefined,
@@ -1602,12 +1618,51 @@ export default function XuatKho() {
               <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Lý Do Xuất
               </label>
-              <CustomSelect
-                value={formData.lyDo}
-                onChange={(value) => setFormData({ ...formData, lyDo: value })}
-                options={reasonOptions}
-                buttonClassName="h-[48px] w-full"
-              />
+              <div ref={reasonDropdownRef} className="relative">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={formData.lyDo}
+                    onChange={(e) => setFormData({ ...formData, lyDo: e.target.value })}
+                    onFocus={() => setIsReasonDropdownOpen(true)}
+                    placeholder="Nhập hoặc chọn lý do xuất"
+                    className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 pr-10 text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsReasonDropdownOpen((p) => !p)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  >
+                    <svg className={`h-4 w-4 transition-transform ${isReasonDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                </div>
+                {isReasonDropdownOpen && (
+                  <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                    <ul className="max-h-56 overflow-auto py-1">
+                      {reasonOptions.map((opt) => (
+                        <li key={opt.value}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData({ ...formData, lyDo: opt.value });
+                              setIsReasonDropdownOpen(false);
+                            }}
+                            className={`w-full px-4 py-2.5 text-left text-sm transition-colors ${
+                              formData.lyDo === opt.value
+                                ? "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-white"
+                                : "text-gray-800 hover:bg-gray-50 dark:text-gray-100 dark:hover:bg-gray-800/50"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
               {hasAssetLines && (
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   Có tài sản trong phiếu: chỉ dùng lý do cấp phát/chuyển nội bộ.
@@ -1621,19 +1676,6 @@ export default function XuatKho() {
               </label>
               <div ref={warehouseDropdownRef} className="relative">
                 <div className="relative">
-                  <svg
-                    className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                    />
-                  </svg>
                   <input
                     type="text"
                     value={warehouseSearchTerm}
@@ -1647,26 +1689,26 @@ export default function XuatKho() {
                         ? formData.kho
                         : "Gõ tên hoặc mã kho..."
                     }
-                    className="h-[48px] w-full rounded-xl border border-gray-200 bg-white pl-9 pr-9 text-sm text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                    className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 pr-10 text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                   />
-                  {selectedWarehouseId && (
+                  {selectedWarehouseId ? (
                     <button
                       type="button"
                       onClick={() => handleSelectWarehouse(null)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                     >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M6 18L18 6M6 6l12 12"
-                        />
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsWarehouseDropdownOpen((p) => !p)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    >
+                      <svg className={`h-4 w-4 transition-transform ${isWarehouseDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                       </svg>
                     </button>
                   )}
@@ -1674,35 +1716,29 @@ export default function XuatKho() {
 
                 {isWarehouseDropdownOpen &&
                   filteredAvailableWarehouses.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
-                      <div className="p-1">
-                        <div className="text-xs text-gray-500 dark:text-gray-400 px-3 py-2 font-medium">
-                          Chọn kho:
-                        </div>
+                    <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                      <ul className="max-h-56 overflow-auto py-1">
                         {filteredAvailableWarehouses
                           .slice(0, 8)
                           .map((warehouse: any) => (
-                            <button
-                              key={warehouse.id}
-                              type="button"
-                              onClick={() =>
-                                handleSelectWarehouse(warehouse.id)
-                              }
-                              className={`w-full text-left px-3 py-2.5 rounded text-sm transition-colors ${
-                                selectedWarehouseId === warehouse.id
-                                  ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium"
-                                  : "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
-                              }`}
-                            >
-                              <div className="font-medium">
-                                {warehouse.name}
-                              </div>
-                              <div className="text-xs text-gray-500 dark:text-gray-400">
-                                {warehouse.code}
-                              </div>
-                            </button>
+                            <li key={warehouse.id}>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleSelectWarehouse(warehouse.id)
+                                }
+                                className={`w-full px-4 py-2.5 text-left text-sm transition-colors ${
+                                  selectedWarehouseId === warehouse.id
+                                    ? "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-white"
+                                    : "text-gray-800 hover:bg-gray-50 dark:text-gray-100 dark:hover:bg-gray-800/50"
+                                }`}
+                              >
+                                <div className="font-medium">{warehouse.name}</div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400">{warehouse.code}</div>
+                              </button>
+                            </li>
                           ))}
-                      </div>
+                      </ul>
                     </div>
                   )}
               </div>
@@ -1743,19 +1779,6 @@ export default function XuatKho() {
                 </label>
                 <div className="relative">
                   <div className="relative">
-                    <svg
-                      className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                      />
-                    </svg>
                     <input
                       type="text"
                       value={materialSearchTerm}
@@ -1772,29 +1795,29 @@ export default function XuatKho() {
                           ? `${materialInput.maHang} - ${materialInput.tenHang}`
                           : "Gõ tên hoặc mã vật tư để tìm..."
                       }
-                      className="h-[48px] w-full rounded-xl border border-gray-200 bg-white pl-9 pr-9 text-sm text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                      className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 pr-10 text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                     />
-                    {materialInput.selectedMaterialId && (
+                    {materialInput.selectedMaterialId ? (
                       <button
                         type="button"
                         onClick={() => {
                           handleSelectMaterial("");
                           setMaterialSearchTerm("");
                         }}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
                       >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M6 18L18 6M6 6l12 12"
-                          />
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setIsMaterialDropdownOpen((p) => !p)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                      >
+                        <svg className={`h-4 w-4 transition-transform ${isMaterialDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                         </svg>
                       </button>
                     )}

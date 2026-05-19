@@ -52,16 +52,19 @@ const LineChart: React.FC<{
   series: { label: string; values: number[]; color: string; areaColor: string }[];
   labels: string[];
   height?: number;
-}> = ({ series, labels, height = 160 }) => {
-  const W = 480;
+}> = ({ series, labels, height = 320 }) => {
+  const W = 520;
   const H = height;
-  const PAD = { top: 20, right: 16, bottom: 32, left: 36 };
+  const PAD = { top: 24, right: 24, bottom: 36, left: 42 };
   const cW = W - PAD.left - PAD.right;
   const cH = H - PAD.top - PAD.bottom;
   const n = labels.length;
 
   const allVals = series.flatMap((s) => s.values);
-  const maxV = Math.max(...allVals, 1);
+  const rawMax = Math.max(...allVals, 1);
+  // Round up to a nice number for cleaner Y-axis
+  const step = rawMax <= 4 ? 1 : rawMax <= 10 ? 2 : rawMax <= 20 ? 5 : 10;
+  const maxV = Math.ceil(rawMax / step) * step;
 
   const xPos = (i: number) => PAD.left + (i / Math.max(n - 1, 1)) * cW;
   const yPos = (v: number) => PAD.top + cH - (v / maxV) * cH;
@@ -84,46 +87,112 @@ const LineChart: React.FC<{
     return `${line} L ${xPos(last)},${PAD.top + cH} L ${xPos(0)},${PAD.top + cH} Z`;
   };
 
-  const guides = [0, 0.5, 1].map((f) => Math.round(f * maxV));
+  const guideCount = 4;
+  const guides = Array.from({ length: guideCount + 1 }, (_, i) => Math.round((i / guideCount) * maxV));
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ display: "block", height }} aria-hidden="true">
       <defs>
         {series.map((s, si) => (
           <linearGradient key={si} id={`aGrad${si}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={s.color} stopOpacity="0.18" />
+            <stop offset="0%" stopColor={s.color} stopOpacity="0.22" />
+            <stop offset="75%" stopColor={s.color} stopOpacity="0.06" />
             <stop offset="100%" stopColor={s.color} stopOpacity="0" />
           </linearGradient>
         ))}
+        {series.map((_s, si) => (
+          <filter key={`glow${si}`} id={`glow${si}`} x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="2.5" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        ))}
       </defs>
 
+      {/* Horizontal grid lines */}
       {guides.map((v) => (
         <g key={v}>
-          <line x1={PAD.left} y1={yPos(v)} x2={PAD.left + cW} y2={yPos(v)}
-            stroke="#f3f4f6" strokeWidth="1" strokeDasharray={v === 0 ? "0" : "4 3"} />
-          <text x={PAD.left - 6} y={yPos(v) + 4} textAnchor="end" fontSize={9} fill="#d1d5db">{fmtMoney(v)}</text>
+          <line
+            x1={PAD.left} y1={yPos(v)} x2={PAD.left + cW} y2={yPos(v)}
+            stroke={v === 0 ? "#e5e7eb" : "#f3f4f6"}
+            strokeWidth={v === 0 ? "1.5" : "1"}
+            strokeDasharray={v === 0 ? "0" : "5 4"}
+          />
+          <text x={PAD.left - 8} y={yPos(v) + 4} textAnchor="end" fontSize={10} fill="#9ca3af" fontFamily="inherit">
+            {v}
+          </text>
         </g>
       ))}
 
+      {/* Vertical column lines at each label */}
+      {labels.map((_, i) => (
+        <line key={`vl${i}`}
+          x1={xPos(i)} y1={PAD.top} x2={xPos(i)} y2={PAD.top + cH}
+          stroke="#f9fafb" strokeWidth="1"
+        />
+      ))}
+
+      {/* Area fills */}
       {series.map((s, si) => (
         <path key={`area-${si}`} d={smoothArea(s.values)} fill={`url(#aGrad${si})`} />
       ))}
 
+      {/* Lines */}
       {series.map((s, si) => (
-        <path key={`line-${si}`} d={smoothPath(s.values)} fill="none" stroke={s.color} strokeWidth="2.5" strokeLinecap="round" />
+        <path
+          key={`line-${si}`}
+          d={smoothPath(s.values)}
+          fill="none"
+          stroke={s.color}
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          filter={`url(#glow${si})`}
+        />
       ))}
 
-      {/* Only show last dot per series */}
+      {/* All data point dots */}
+      {series.map((s, si) =>
+        s.values.map((v, i) => {
+          const isLast = i === s.values.length - 1;
+          return (
+            <circle
+              key={`dot-${si}-${i}`}
+              cx={xPos(i)} cy={yPos(v)}
+              r={isLast ? 5 : 3.5}
+              fill="white"
+              stroke={s.color}
+              strokeWidth={isLast ? 2.5 : 2}
+              opacity={isLast ? 1 : 0.85}
+            />
+          );
+        })
+      )}
+
+      {/* Value labels on last dot */}
       {series.map((s, si) => {
         const last = s.values.length - 1;
+        const val = s.values[last];
+        if (val === 0) return null;
+        const above = yPos(val) - PAD.top > 14;
         return (
-          <circle key={`dot-${si}`} cx={xPos(last)} cy={yPos(s.values[last])} r={4}
-            fill="white" stroke={s.color} strokeWidth="2.5" />
+          <text
+            key={`lbl-${si}`}
+            x={xPos(last)}
+            y={yPos(val) + (above ? -9 : 14)}
+            textAnchor="middle"
+            fontSize={10}
+            fontWeight="600"
+            fill={s.color}
+            fontFamily="inherit"
+          >
+            {val}
+          </text>
         );
       })}
 
+      {/* X-axis labels */}
       {labels.map((l, i) => (
-        <text key={i} x={xPos(i)} y={H - 6} textAnchor="middle" fontSize={9} fill="#9ca3af">{l}</text>
+        <text key={i} x={xPos(i)} y={H - 8} textAnchor="middle" fontSize={10} fill="#9ca3af" fontFamily="inherit">{l}</text>
       ))}
     </svg>
   );
@@ -433,33 +502,37 @@ export default function Home() {
             title="Hoạt Động Nhập Xuất"
             subtitle="Số phiếu mỗi tháng trong 6 tháng qua"
             footer={
-              <div className="flex flex-wrap items-center gap-5 text-xs text-gray-500 dark:text-gray-400">
+              <div className="flex flex-wrap items-center gap-6 text-xs text-gray-500 dark:text-gray-400">
                 <span className="flex items-center gap-2">
-                  <span className="h-2.5 w-4 rounded-full bg-cyan-500" />
-                  Nhập kho
-                  <span className="font-semibold text-gray-700 dark:text-gray-300">{importsM.length}</span>
-                  tháng này
+                  <span className="h-3 w-3 rounded-full bg-cyan-500 shadow-[0_0_0_3px_rgba(8,145,178,0.15)]" />
+                  <span className="text-gray-600 dark:text-gray-300">Nhập kho</span>
+                  <span className="font-bold text-gray-800 dark:text-gray-100">{importsM.length}</span>
+                  <span>tháng này</span>
                   {deltaSign(importsM.length, importsPrev)}
                 </span>
                 <span className="flex items-center gap-2">
-                  <span className="h-2.5 w-4 rounded-full bg-emerald-500" />
-                  Xuất kho
-                  <span className="font-semibold text-gray-700 dark:text-gray-300">{exportsM.length}</span>
-                  tháng này
+                  <span className="h-3 w-3 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.15)]" />
+                  <span className="text-gray-600 dark:text-gray-300">Xuất kho</span>
+                  <span className="font-bold text-gray-800 dark:text-gray-100">{exportsM.length}</span>
+                  <span>tháng này</span>
                   {deltaSign(exportsM.length, exportsPrev)}
                 </span>
-                <span className="ml-auto text-gray-400">Tổng tồn: <span className="font-semibold text-gray-600 dark:text-gray-300">{totalStock.toLocaleString("vi-VN")}</span></span>
+                <span className="ml-auto text-gray-400 dark:text-gray-500">
+                  Tổng tồn: <span className="font-semibold text-gray-600 dark:text-gray-300">{totalStock.toLocaleString("vi-VN")}</span>
+                </span>
               </div>
             }
           >
-            <LineChart
-              labels={months6.map((m) => m.label)}
-              series={[
-                { label: "Nhập", values: importSeries, color: "#0891b2", areaColor: "#0891b2" },
-                { label: "Xuất", values: exportSeries, color: "#10b981", areaColor: "#10b981" },
-              ]}
-              height={200}
-            />
+            <div className="px-2 pb-2 pt-4">
+              <LineChart
+                labels={months6.map((m) => m.label)}
+                series={[
+                  { label: "Nhập", values: importSeries, color: "#0891b2", areaColor: "#0891b2" },
+                  { label: "Xuất", values: exportSeries, color: "#10b981", areaColor: "#10b981" },
+                ]}
+                height={320}
+              />
+            </div>
           </Card>
 
           {/* Stock health summary */}
