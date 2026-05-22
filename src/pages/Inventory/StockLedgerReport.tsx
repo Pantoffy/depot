@@ -100,6 +100,13 @@ const formatDateTime = (dateStr?: string) => {
 };
 
 const formatNumber = (value: number) => value.toLocaleString("vi-VN");
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
 const resolveMovementAmount = (detail: any, quantity: number) => {
   const amount = Number(detail?.amount);
@@ -462,6 +469,83 @@ export default function StockLedgerReport() {
     showToast(`Đã xuất ${rows.length} dòng báo cáo`, "success");
   };
 
+  const handleExportWord = () => {
+    if (rows.length === 0) {
+      showToast("Không có dữ liệu để xuất", "warning");
+      return;
+    }
+
+    const tableRows = rows
+      .map(
+        (row) => `
+        <tr>
+          <td>${escapeHtml(row.warehouseName)}</td>
+          <td>${escapeHtml(row.materialCode)}</td>
+          <td>${escapeHtml(row.materialName)}</td>
+          <td>${escapeHtml(row.categoryName)}</td>
+          <td>${escapeHtml(row.unitName)}</td>
+          <td>${formatNumber(row.openingQuantity)}</td>
+          <td>${formatNumber(row.importQuantity)}</td>
+          <td>${formatNumber(row.exportQuantity)}</td>
+          <td>${formatNumber(row.endingQuantity)}</td>
+          <td>${escapeHtml(row.lastActivityDate ? formatDateTime(row.lastActivityDate) : "-")}</td>
+        </tr>`,
+      )
+      .join("");
+
+    const htmlContent = `<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Báo cáo xuất nhập tồn</title>
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 12px; color: #111827; }
+      h1 { font-size: 20px; margin: 0 0 8px; }
+      p { margin: 4px 0; }
+      table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+      th, td { border: 1px solid #d1d5db; padding: 6px; text-align: left; vertical-align: top; }
+      th { background: #f3f4f6; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1>Báo cáo xuất nhập tồn</h1>
+    <p>Khoảng thời gian: ${escapeHtml(startDate)} đến ${escapeHtml(endDate)}</p>
+    <p>Số dòng báo cáo: ${formatNumber(rows.length)}</p>
+    <p>Thời gian xuất: ${escapeHtml(new Date().toLocaleString("vi-VN"))}</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Kho</th>
+          <th>Mã vật tư</th>
+          <th>Tên vật tư</th>
+          <th>Phân loại</th>
+          <th>Đơn vị</th>
+          <th>Tồn đầu kỳ</th>
+          <th>Nhập trong kỳ</th>
+          <th>Xuất trong kỳ</th>
+          <th>Tồn cuối kỳ</th>
+          <th>Cập nhật gần nhất</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${tableRows}
+      </tbody>
+    </table>
+  </body>
+</html>`;
+
+    const blob = new Blob(["\uFEFF", htmlContent], {
+      type: "application/msword;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `bao-cao-xuat-nhap-ton-${startDate}_den_${endDate}.doc`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast(`Đã xuất báo cáo Word (${rows.length} dòng)`, "success");
+  };
+
   return (
     <>
       <PageMeta title="Báo cáo xuất nhập tồn" description="Báo cáo xuất nhập tồn theo kho và vật tư" />
@@ -519,6 +603,12 @@ export default function StockLedgerReport() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={handleExportWord}
+                    className="inline-flex items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200 dark:hover:bg-blue-500/20"
+                  >
+                    Xuất Word
+                  </button>
                   <button
                     onClick={handleExportCsv}
                     className="inline-flex items-center justify-center rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-medium text-cyan-700 transition-colors hover:bg-cyan-100 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-200 dark:hover:bg-cyan-500/20"
