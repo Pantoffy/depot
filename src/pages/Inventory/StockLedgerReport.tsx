@@ -477,10 +477,10 @@ export default function StockLedgerReport() {
 
     const tableRows = rows
       .map((row) => {
-        const openingQuantityText = escapeHtml(formatNumber(row.openingQuantity));
-        const importQuantityText = escapeHtml(formatNumber(row.importQuantity));
-        const exportQuantityText = escapeHtml(formatNumber(row.exportQuantity));
-        const endingQuantityText = escapeHtml(formatNumber(row.endingQuantity));
+        const openingQuantityText = formatNumber(row.openingQuantity);
+        const importQuantityText = formatNumber(row.importQuantity);
+        const exportQuantityText = formatNumber(row.exportQuantity);
+        const endingQuantityText = formatNumber(row.endingQuantity);
         const lastActivityText = escapeHtml(row.lastActivityDate ? formatDateTime(row.lastActivityDate) : "-");
 
         return `
@@ -516,7 +516,7 @@ export default function StockLedgerReport() {
   <body>
     <h1>Báo cáo xuất nhập tồn</h1>
     <p>Khoảng thời gian: ${escapeHtml(startDate)} đến ${escapeHtml(endDate)}</p>
-    <p>Số dòng báo cáo: ${escapeHtml(formatNumber(rows.length))}</p>
+    <p>Số dòng báo cáo: ${formatNumber(rows.length)}</p>
     <p>Thời gian xuất: ${escapeHtml(new Date().toLocaleString("vi-VN"))}</p>
     <table>
       <thead>
