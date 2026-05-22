@@ -107,6 +107,7 @@ const escapeHtml = (value: string) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+const sanitizeFileNamePart = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "-");
 
 const resolveMovementAmount = (detail: any, quantity: number) => {
   const amount = Number(detail?.amount);
@@ -540,13 +541,15 @@ export default function StockLedgerReport() {
   </body>
 </html>`;
 
+    const safeStartDate = sanitizeFileNamePart(startDate || "tu-ngay");
+    const safeEndDate = sanitizeFileNamePart(endDate || "den-ngay");
     const blob = new Blob(["\uFEFF", htmlContent], {
-      type: "application/msword;charset=utf-8",
+      type: "application/vnd.ms-word;charset=utf-8",
     });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `bao-cao-xuat-nhap-ton-${startDate}_den_${endDate}.doc`;
+    link.download = `bao-cao-xuat-nhap-ton-${safeStartDate}_den_${safeEndDate}.doc`;
     link.click();
     URL.revokeObjectURL(url);
     showToast(`Đã xuất báo cáo Word (${rows.length} dòng)`, "success");
