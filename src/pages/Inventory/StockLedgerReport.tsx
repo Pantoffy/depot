@@ -108,6 +108,16 @@ const escapeHtml = (value: string) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 const sanitizeFileNamePart = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "-");
+const sanitizeNumberText = (value: number) => formatNumber(value).replace(/[^\d.,\s-]/g, "");
+const formatReportTimestamp = (value: Date) => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  const hour = String(value.getHours()).padStart(2, "0");
+  const minute = String(value.getMinutes()).padStart(2, "0");
+  const second = String(value.getSeconds()).padStart(2, "0");
+  return `${day}/${month}/${year} ${hour}:${minute}:${second}`;
+};
 
 const resolveMovementAmount = (detail: any, quantity: number) => {
   const amount = Number(detail?.amount);
@@ -478,10 +488,10 @@ export default function StockLedgerReport() {
 
     const tableRows = rows
       .map((row) => {
-        const openingQuantityText = formatNumber(row.openingQuantity);
-        const importQuantityText = formatNumber(row.importQuantity);
-        const exportQuantityText = formatNumber(row.exportQuantity);
-        const endingQuantityText = formatNumber(row.endingQuantity);
+        const openingQuantityText = sanitizeNumberText(row.openingQuantity);
+        const importQuantityText = sanitizeNumberText(row.importQuantity);
+        const exportQuantityText = sanitizeNumberText(row.exportQuantity);
+        const endingQuantityText = sanitizeNumberText(row.endingQuantity);
         const lastActivityText = escapeHtml(row.lastActivityDate ? formatDateTime(row.lastActivityDate) : "-");
 
         return `
@@ -517,8 +527,8 @@ export default function StockLedgerReport() {
   <body>
     <h1>Báo cáo xuất nhập tồn</h1>
     <p>Khoảng thời gian: ${escapeHtml(startDate)} đến ${escapeHtml(endDate)}</p>
-    <p>Số dòng báo cáo: ${formatNumber(rows.length)}</p>
-    <p>Thời gian xuất: ${escapeHtml(new Date().toLocaleString("vi-VN"))}</p>
+    <p>Số dòng báo cáo: ${sanitizeNumberText(rows.length)}</p>
+    <p>Thời gian xuất: ${escapeHtml(formatReportTimestamp(new Date()))}</p>
     <table>
       <thead>
         <tr>
