@@ -476,21 +476,27 @@ export default function StockLedgerReport() {
     }
 
     const tableRows = rows
-      .map(
-        (row) => `
+      .map((row) => {
+        const openingQuantityText = escapeHtml(formatNumber(row.openingQuantity));
+        const importQuantityText = escapeHtml(formatNumber(row.importQuantity));
+        const exportQuantityText = escapeHtml(formatNumber(row.exportQuantity));
+        const endingQuantityText = escapeHtml(formatNumber(row.endingQuantity));
+        const lastActivityText = escapeHtml(row.lastActivityDate ? formatDateTime(row.lastActivityDate) : "-");
+
+        return `
         <tr>
           <td>${escapeHtml(row.warehouseName)}</td>
           <td>${escapeHtml(row.materialCode)}</td>
           <td>${escapeHtml(row.materialName)}</td>
           <td>${escapeHtml(row.categoryName)}</td>
           <td>${escapeHtml(row.unitName)}</td>
-          <td>${formatNumber(row.openingQuantity)}</td>
-          <td>${formatNumber(row.importQuantity)}</td>
-          <td>${formatNumber(row.exportQuantity)}</td>
-          <td>${formatNumber(row.endingQuantity)}</td>
-          <td>${escapeHtml(row.lastActivityDate ? formatDateTime(row.lastActivityDate) : "-")}</td>
-        </tr>`,
-      )
+          <td>${openingQuantityText}</td>
+          <td>${importQuantityText}</td>
+          <td>${exportQuantityText}</td>
+          <td>${endingQuantityText}</td>
+          <td>${lastActivityText}</td>
+        </tr>`;
+      })
       .join("");
 
     const htmlContent = `<!DOCTYPE html>
@@ -510,7 +516,7 @@ export default function StockLedgerReport() {
   <body>
     <h1>Báo cáo xuất nhập tồn</h1>
     <p>Khoảng thời gian: ${escapeHtml(startDate)} đến ${escapeHtml(endDate)}</p>
-    <p>Số dòng báo cáo: ${formatNumber(rows.length)}</p>
+    <p>Số dòng báo cáo: ${escapeHtml(formatNumber(rows.length))}</p>
     <p>Thời gian xuất: ${escapeHtml(new Date().toLocaleString("vi-VN"))}</p>
     <table>
       <thead>
