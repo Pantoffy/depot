@@ -575,7 +575,7 @@ INSERT INTO ImportReceiptDetail (importReceiptId, materialId, unitId, quantity, 
 (29, 273, 7, 5, 2500000, 12500000, N'Thép SKD11 tấm 30mm'),
 (29, 307, 1, 10, 805000, 8050000, N'Thép S45C tròn phi 80'),
 -- PN030: Nhập máy phay 5 trục (Đang soạn thảo)
-(30, 123, 2, 1, 320000000, 320000000, N'Máy phay CNC 5 trục cao cấp'),
+(30, 266, 2, 1, 320000000, 320000000, N'Máy phay CNC 5 trục'),
 -- PN031: Nhập thiết bị tự động hóa (Đang soạn thảo)
 (31, 1, 2, 20, 850000, 17000000, N'Bàn phím cơ gaming'),
 (31, 7, 2, 15, 1800000, 27000000, N'Màn hình LCD 24 inch'),
@@ -590,7 +590,7 @@ INSERT INTO ImportReceiptDetail (importReceiptId, materialId, unitId, quantity, 
 (33, 142, 9, 30, 112000, 3360000, N'Ống nước PVC D60'),
 -- PN034: Nhập dây cáp điện lực (Đang soạn thảo)
 (34, 136, 8, 20, 780000, 15600000, N'Dây cáp điện 3x2.5mm2'),
-(34, 17, 8, 15, 720000, 10800000, N'Dây cáp điện khác'),
+(34, 43, 8, 15, 720000, 10800000, N'Dây cáp điện 3x2.5mm2'),
 (34, 206, 10, 40, 185000, 7400000, N'Băng keo cách điện'),
 -- PN035: Nhập phụ kiện khí nén (Đang soạn thảo)
 (35, 254, 9, 20, 380000, 7600000, N'Ống silicon chịu nhiệt'),
