@@ -411,3 +411,208 @@ INSERT INTO Materials (code, name, categoryId, unitId, supplierId, note, status,
 (N'NL142', N'Bột đồng siêu mịn', 6, 1, 15, N'Mesh 300 bao 25kg', N'Đang hoạt động', N'Nguyên liệu'),
 (N'TS078', N'Máy cắt kim loại band saw', 1, 2, 47, N'Phi 250mm', N'Đang hoạt động', N'Tài sản');
 GO
+
+/* =====================================================
+   IMPORT RECEIPTS (40) - 4 statuses:
+   Đang soạn thảo (10), Chờ xác nhận (10), Đã xác nhận (15), Đã hủy (5)
+===================================================== */
+INSERT INTO ImportReceipt (code, receiptNumber, importTime, supplierId, warehouseId, supplierInvoiceNo, documentNo, totalAmount, status, createdBy, approvedBy, approvedAt, note, createdAt) VALUES
+(N'PN001', N'PN-2025-001', '2025-01-05 08:30:00', 1, 1, N'HD-TV-001', N'CT-001', 45000000, N'Đã xác nhận', N'Nguyễn Văn An', N'Trần Thị Bình', '2025-01-06 09:00:00', N'Nhập thép tấm đợt 1', '2025-01-05 08:30:00'),
+(N'PN002', N'PN-2025-002', '2025-01-10 09:00:00', 2, 1, N'HD-DD-001', N'CT-002', 32000000, N'Đã xác nhận', N'Phạm Đức Dũng', N'Trần Thị Bình', '2025-01-11 10:00:00', N'Nhập nhựa PP nguyên sinh', '2025-01-10 09:00:00'),
+(N'PN003', N'PN-2025-003', '2025-01-15 10:15:00', 6, 2, N'HD-SM-001', N'CT-003', 78500000, N'Đã xác nhận', N'Vũ Văn Phúc', N'Hoàng Thị Em', '2025-01-16 08:30:00', N'Nhập thiết bị điện tử', '2025-01-15 10:15:00'),
+(N'PN004', N'PN-2025-004', '2025-01-20 14:00:00', 5, 1, N'HD-ABC-001', N'CT-004', 15600000, N'Đã xác nhận', N'Hoàng Thị Em', N'Nguyễn Văn An', '2025-01-21 09:00:00', N'Nhập hóa chất tẩy rửa', '2025-01-20 14:00:00'),
+(N'PN005', N'PN-2025-005', '2025-01-25 08:00:00', 11, 1, N'HD-HT-001', N'CT-005', 28000000, N'Đã xác nhận', N'Lý Văn Long', N'Trần Thị Bình', '2025-01-26 10:00:00', N'Nhập xi măng PCB40', '2025-01-25 08:00:00'),
+(N'PN006', N'PN-2025-006', '2025-02-01 09:30:00', 14, 1, N'HD-HP-001', N'CT-006', 52000000, N'Đã xác nhận', N'Đinh Văn Ơn', N'Hoàng Thị Em', '2025-02-02 08:00:00', N'Nhập ống thép mạ kẽm', '2025-02-01 09:30:00'),
+(N'PN007', N'PN-2025-007', '2025-02-05 11:00:00', 22, 2, N'HD-CT-001', N'CT-007', 18900000, N'Đã xác nhận', N'Lê Thị Xuyến', N'Nguyễn Văn An', '2025-02-06 09:00:00', N'Nhập dụng cụ cầm tay', '2025-02-05 11:00:00'),
+(N'PN008', N'PN-2025-008', '2025-02-10 13:45:00', 17, 2, N'HD-DCD-001', N'CT-008', 41200000, N'Đã xác nhận', N'Hà Thị Rạng', N'Trần Thị Bình', '2025-02-11 10:30:00', N'Nhập dây cáp điện', '2025-02-10 13:45:00'),
+(N'PN009', N'PN-2025-009', '2025-02-15 08:00:00', 34, 1, N'HD-TV-002', N'CT-009', 67500000, N'Đã xác nhận', N'Nguyễn Văn An', N'Hoàng Thị Em', '2025-02-16 09:00:00', N'Nhập thép hình chữ I', '2025-02-15 08:00:00'),
+(N'PN010', N'PN-2025-010', '2025-02-20 10:00:00', 47, 3, N'HD-MCN-001', N'CT-010', 250000000, N'Đã xác nhận', N'Phạm Đức Dũng', N'Nguyễn Văn An', '2025-02-21 08:00:00', N'Nhập máy CNC mới', '2025-02-20 10:00:00'),
+(N'PN011', N'PN-2025-011', '2025-02-25 09:00:00', 9, 1, N'HD-SDV-001', N'CT-011', 23400000, N'Đã xác nhận', N'Bùi Văn Ích', N'Trần Thị Bình', '2025-02-26 08:30:00', N'Nhập sơn công nghiệp', '2025-02-25 09:00:00'),
+(N'PN012', N'PN-2025-012', '2025-03-01 08:30:00', 15, 1, N'HD-INX-001', N'CT-012', 89000000, N'Đã xác nhận', N'Cao Thị Phương', N'Hoàng Thị Em', '2025-03-02 09:00:00', N'Nhập inox tấm 304', '2025-03-01 08:30:00'),
+(N'PN013', N'PN-2025-013', '2025-03-05 10:00:00', 42, 1, N'HD-KHI-001', N'CT-013', 19500000, N'Đã xác nhận', N'Nguyễn Văn An', N'Trần Thị Bình', '2025-03-06 09:00:00', N'Nhập khí hàn Argon', '2025-03-05 10:00:00'),
+(N'PN014', N'PN-2025-014', '2025-03-10 14:00:00', 37, 1, N'HD-OV-001', N'CT-014', 12800000, N'Đã xác nhận', N'Lê Thị Xuyến', N'Nguyễn Văn An', '2025-03-11 08:00:00', N'Nhập ốc vít bu lông', '2025-03-10 14:00:00'),
+(N'PN015', N'PN-2025-015', '2025-03-15 09:00:00', 12, 3, N'HD-MCN-002', N'CT-015', 180000000, N'Đã xác nhận', N'Mai Thị Mơ', N'Hoàng Thị Em', '2025-03-16 10:00:00', N'Nhập máy đóng gói', '2025-03-15 09:00:00'),
+(N'PN016', N'PN-2025-016', '2025-03-20 08:00:00', 4, 1, N'HD-GPN-001', N'CT-016', 35600000, N'Chờ xác nhận', N'Phạm Đức Dũng', NULL, NULL, N'Nhập gỗ thông xẻ', '2025-03-20 08:00:00'),
+(N'PN017', N'PN-2025-017', '2025-03-22 09:30:00', 24, 1, N'HD-NK-001', N'CT-017', 56000000, N'Chờ xác nhận', N'Hồ Văn Anh', NULL, NULL, N'Nhập nhôm thanh định hình', '2025-03-22 09:30:00'),
+(N'PN018', N'PN-2025-018', '2025-03-25 10:00:00', 7, 1, N'HD-VTP-001', N'CT-018', 14200000, N'Chờ xác nhận', N'Đỗ Thị Giang', NULL, NULL, N'Nhập vải canvas', '2025-03-25 10:00:00'),
+(N'PN019', N'PN-2025-019', '2025-03-28 11:00:00', 26, 1, N'HD-DN-001', N'CT-019', 8900000, N'Chờ xác nhận', N'Nguyễn Văn An', NULL, NULL, N'Nhập dầu nhớt Shell', '2025-03-28 11:00:00'),
+(N'PN020', N'PN-2025-020', '2025-04-01 08:30:00', 30, 1, N'HD-CS-001', N'CT-020', 21500000, N'Chờ xác nhận', N'Lê Thị Xuyến', NULL, NULL, N'Nhập cao su tấm NBR', '2025-04-01 08:30:00'),
+(N'PN021', N'PN-2025-021', '2025-04-03 09:00:00', 49, 2, N'HD-TB-001', N'CT-021', 42000000, N'Chờ xác nhận', N'Phạm Đức Dũng', NULL, NULL, N'Nhập thiết bị đo lường', '2025-04-03 09:00:00'),
+(N'PN022', N'PN-2025-022', '2025-04-05 10:30:00', 36, 1, N'HD-KD-001', N'CT-022', 6500000, N'Chờ xác nhận', N'Nguyễn Văn An', NULL, NULL, N'Nhập keo dán Epoxy', '2025-04-05 10:30:00'),
+(N'PN023', N'PN-2025-023', '2025-04-08 13:00:00', 40, 1, N'HD-GM-001', N'CT-023', 18700000, N'Chờ xác nhận', N'Bùi Văn Ích', NULL, NULL, N'Nhập gạch men 60x60', '2025-04-08 13:00:00'),
+(N'PN024', N'PN-2025-024', '2025-04-10 14:30:00', 46, 3, N'HD-BD-001', N'CT-024', 95000000, N'Chờ xác nhận', N'Mai Thị Mơ', NULL, NULL, N'Nhập máy biến áp', '2025-04-10 14:30:00'),
+(N'PN025', N'PN-2025-025', '2025-04-12 08:00:00', 21, 1, N'HD-VLXD-001', N'CT-025', 27800000, N'Chờ xác nhận', N'Trương Văn Vinh', NULL, NULL, N'Nhập vật liệu xây dựng', '2025-04-12 08:00:00'),
+(N'PN026', N'PN-2025-026', '2025-04-15 09:00:00', 1, 1, N'HD-TV-003', N'CT-026', 38000000, N'Đang soạn thảo', N'Nguyễn Văn An', NULL, NULL, N'Nhập thép tấm đợt 2', '2025-04-15 09:00:00'),
+(N'PN027', N'PN-2025-027', '2025-04-17 10:00:00', 5, 1, N'HD-ABC-002', N'CT-027', 22500000, N'Đang soạn thảo', N'Hoàng Thị Em', NULL, NULL, N'Nhập hóa chất đợt 2', '2025-04-17 10:00:00'),
+(N'PN028', N'PN-2025-028', '2025-04-18 11:30:00', 15, 1, N'HD-INX-002', N'CT-028', 67000000, N'Đang soạn thảo', N'Cao Thị Phương', NULL, NULL, N'Nhập inox 316L', '2025-04-18 11:30:00'),
+(N'PN029', N'PN-2025-029', '2025-04-19 08:00:00', 34, 1, N'HD-TV-004', N'CT-029', 43200000, N'Đang soạn thảo', N'Nguyễn Văn An', NULL, NULL, N'Nhập thép C45 tròn', '2025-04-19 08:00:00'),
+(N'PN030', N'PN-2025-030', '2025-04-20 09:30:00', 47, 3, NULL, NULL, 320000000, N'Đang soạn thảo', N'Phạm Đức Dũng', NULL, NULL, N'Nhập máy phay 5 trục', '2025-04-20 09:30:00'),
+(N'PN031', N'PN-2025-031', '2025-04-21 10:00:00', 6, 2, NULL, NULL, 55000000, N'Đang soạn thảo', N'Vũ Văn Phúc', NULL, NULL, N'Nhập thiết bị tự động hóa', '2025-04-21 10:00:00'),
+(N'PN032', N'PN-2025-032', '2025-04-22 13:00:00', 2, 1, NULL, NULL, 28000000, N'Đang soạn thảo', N'Phạm Đức Dũng', NULL, NULL, N'Nhập nhựa kỹ thuật', '2025-04-22 13:00:00'),
+(N'PN033', N'PN-2025-033', '2025-04-23 14:00:00', 14, 1, NULL, NULL, 41500000, N'Đang soạn thảo', N'Đinh Văn Ơn', NULL, NULL, N'Nhập ống thép đen', '2025-04-23 14:00:00'),
+(N'PN034', N'PN-2025-034', '2025-04-24 08:30:00', 17, 2, NULL, NULL, 33600000, N'Đang soạn thảo', N'Hà Thị Rạng', NULL, NULL, N'Nhập dây cáp điện lực', '2025-04-24 08:30:00'),
+(N'PN035', N'PN-2025-035', '2025-04-25 09:00:00', 50, 1, NULL, NULL, 15800000, N'Đang soạn thảo', N'Nguyễn Văn An', NULL, NULL, N'Nhập phụ kiện khí nén', '2025-04-25 09:00:00'),
+(N'PN036', N'PN-2025-036', '2025-02-08 09:00:00', 10, 1, N'HD-KXD-001', N'CT-036', 24500000, N'Đã hủy', N'Trịnh Thị Kim', N'Nguyễn Văn An', '2025-02-09 08:00:00', N'Hủy do NCC không giao đúng hẹn', '2025-02-08 09:00:00'),
+(N'PN037', N'PN-2025-037', '2025-02-18 10:30:00', 16, 1, N'HD-BBI-001', N'CT-037', 9800000, N'Đã hủy', N'Tô Văn Quang', NULL, NULL, N'Hủy do sai quy cách', '2025-02-18 10:30:00'),
+(N'PN038', N'PN-2025-038', '2025-03-08 14:00:00', 19, 2, N'HD-YT-001', N'CT-038', 56000000, N'Đã hủy', N'Đặng Văn Tài', NULL, NULL, N'Hủy do thay đổi NCC', '2025-03-08 14:00:00'),
+(N'PN039', N'PN-2025-039', '2025-03-18 08:30:00', 31, 1, N'HD-BN-001', N'CT-039', 31200000, N'Đã hủy', N'Nguyễn Văn An', NULL, NULL, N'Hủy do ngân sách cắt giảm', '2025-03-18 08:30:00'),
+(N'PN040', N'PN-2025-040', '2025-04-02 11:00:00', 44, 3, N'HD-AN-001', N'CT-040', 125000000, N'Đã hủy', N'Phạm Đức Dũng', NULL, NULL, N'Hủy do trùng với PN010', '2025-04-02 11:00:00');
+GO
+
+/* =====================================================
+   IMPORT RECEIPT DETAILS (120 lines for 40 receipts, ~3 items each)
+===================================================== */
+INSERT INTO ImportReceiptDetail (importReceiptId, materialId, unitId, quantity, unitPrice, amount, note) VALUES
+-- PN001: Nhập thép tấm (Đã xác nhận)
+(1, 3, 1, 50, 450000, 22500000, N'Thép tấm SS400 6mm'),
+(1, 149, 1, 30, 520000, 15600000, N'Thép hình chữ I H200'),
+(1, 153, 1, 20, 345000, 6900000, N'Sắt tròn phi 16'),
+-- PN002: Nhập nhựa PP (Đã xác nhận)
+(2, 6, 1, 200, 85000, 17000000, N'Nhựa PP nguyên sinh'),
+(2, 167, 1, 100, 95000, 9500000, N'Nhựa ABS nguyên sinh'),
+(2, 271, 7, 5, 1100000, 5500000, N'Nhựa POM tấm 20mm'),
+-- PN003: Nhập thiết bị điện tử (Đã xác nhận)
+(3, 1, 2, 50, 850000, 42500000, N'Bàn phím cơ gaming'),
+(3, 4, 2, 80, 350000, 28000000, N'Chuột không dây'),
+(3, 10, 2, 20, 400000, 8000000, N'Ổ cứng SSD 500GB'),
+-- PN004: Nhập hóa chất tẩy rửa (Đã xác nhận)
+(4, 11, 4, 30, 280000, 8400000, N'Hóa chất tẩy rửa CN'),
+(4, 209, 4, 20, 180000, 3600000, N'Chất chống thấm Sika'),
+(4, 212, 4, 10, 360000, 3600000, N'Xăng RON95'),
+-- PN005: Nhập xi măng (Đã xác nhận)
+(5, 13, 5, 200, 95000, 19000000, N'Xi măng PCB40 bao 50kg'),
+(5, 160, 5, 100, 90000, 9000000, N'Xi măng trắng'),
+-- PN006: Nhập ống thép mạ kẽm (Đã xác nhận)
+(6, 21, 9, 100, 285000, 28500000, N'Ống thép mạ kẽm D34'),
+(6, 216, 9, 50, 380000, 19000000, N'Thép hộp 40x80x2mm'),
+(6, 285, 9, 20, 225000, 4500000, N'Thép ống đen DN80'),
+-- PN007: Nhập dụng cụ cầm tay (Đã xác nhận)
+(7, 131, 6, 10, 650000, 6500000, N'Bộ dụng cụ sửa chữa'),
+(7, 138, 2, 15, 450000, 6750000, N'Máy khoan pin 18V'),
+(7, 159, 6, 8, 710000, 5680000, N'Bộ socket 1/2 inch'),
+-- PN008: Nhập dây cáp điện (Đã xác nhận)
+(8, 136, 8, 30, 780000, 23400000, N'Dây cáp điện 3x2.5mm2'),
+(8, 206, 10, 50, 185000, 9250000, N'Băng keo cách điện'),
+(8, 261, 2, 15, 570000, 8550000, N'Dây curoa B65'),
+-- PN009: Nhập thép hình (Đã xác nhận)
+(9, 149, 1, 40, 680000, 27200000, N'Thép hình chữ I H200'),
+(9, 213, 1, 60, 420000, 25200000, N'Thép lá cuộn cán nguội'),
+(9, 269, 1, 20, 755000, 15100000, N'Thép C45 tròn phi 50'),
+-- PN010: Nhập máy CNC (Đã xác nhận)
+(10, 105, 2, 1, 150000000, 150000000, N'Máy tiện CNC'),
+(10, 123, 2, 1, 100000000, 100000000, N'Máy phay CNC 3 trục'),
+-- PN011: Nhập sơn công nghiệp (Đã xác nhận)
+(11, 14, 4, 30, 320000, 9600000, N'Sơn công nghiệp Epoxy'),
+(11, 156, 4, 40, 185000, 7400000, N'Sơn chống rỉ đỏ'),
+(11, 205, 1, 20, 320000, 6400000, N'Sơn tĩnh điện RAL7035'),
+-- PN012: Nhập inox tấm 304 (Đã xác nhận)
+(12, 157, 1, 20, 2800000, 56000000, N'Inox tấm 304 dày 2mm'),
+(12, 237, 1, 10, 2100000, 21000000, N'Thép không gỉ 316L'),
+(12, 300, 7, 8, 1500000, 12000000, N'Tấm inox 201 dày 1mm'),
+-- PN013: Nhập khí hàn (Đã xác nhận)
+(13, 302, 2, 15, 850000, 12750000, N'Khí Argon 99.99%'),
+(13, 176, 2, 10, 450000, 4500000, N'Bình khí CO2 40L'),
+(13, 118, 1, 5, 450000, 2250000, N'Que hàn inox 2.5mm'),
+-- PN014: Nhập ốc vít bu lông (Đã xác nhận)
+(14, 132, 1, 50, 85000, 4250000, N'Ốc vít inox M8x30'),
+(14, 164, 1, 40, 95000, 3800000, N'Bu lông M12x50 8.8'),
+(14, 247, 1, 30, 72000, 2160000, N'Đinh vít tự khoan'),
+(14, 255, 9, 25, 105000, 2625000, N'Thanh ren M16 dài 1m'),
+-- PN015: Nhập máy đóng gói (Đã xác nhận)
+(15, 210, 2, 1, 120000000, 120000000, N'Máy đóng gói tự động'),
+(15, 214, 2, 1, 60000000, 60000000, N'Máy bọc co nhiệt'),
+-- PN016: Nhập gỗ thông xẻ (Chờ xác nhận)
+(16, 8, 3, 200, 95000, 19000000, N'Gỗ thông xẻ 3x6cm'),
+(16, 163, 7, 30, 350000, 10500000, N'Gỗ MDF 18mm'),
+(16, 202, 3, 50, 122000, 6100000, N'Gỗ cao su xẻ 4x10cm'),
+-- PN017: Nhập nhôm thanh (Chờ xác nhận)
+(17, 125, 9, 80, 380000, 30400000, N'Nhôm thanh định hình 40x40'),
+(17, 219, 7, 10, 1850000, 18500000, N'Nhôm tấm 5083 dày 5mm'),
+(17, 174, 1, 15, 480000, 7200000, N'Thanh đồng Cu 99.9%'),
+-- PN018: Nhập vải canvas (Chờ xác nhận)
+(18, 22, 8, 50, 145000, 7250000, N'Vải canvas 12oz khổ 1.5m'),
+(18, 177, 8, 30, 165000, 4950000, N'Vải lọc polyester'),
+(18, 278, 9, 10, 200000, 2000000, N'Dây thừng PP 10mm'),
+-- PN019: Nhập dầu nhớt (Chờ xác nhận)
+(19, 121, 4, 10, 520000, 5200000, N'Dầu nhớt Shell 10W40'),
+(19, 310, 4, 2, 1850000, 3700000, N'Dầu thủy lực 68'),
+-- PN020: Nhập cao su tấm (Chờ xác nhận)
+(20, 128, 8, 30, 350000, 10500000, N'Cao su tấm NBR 3mm'),
+(20, 258, 7, 15, 420000, 6300000, N'Tấm cao su chống tĩnh điện'),
+(20, 275, 2, 20, 235000, 4700000, N'Gioăng cao su EPDM'),
+-- PN021: Nhập thiết bị đo lường (Chờ xác nhận)
+(21, 162, 2, 5, 3500000, 17500000, N'Đồng hồ đo áp suất'),
+(21, 194, 2, 3, 4200000, 12600000, N'Thước kẹp điện tử 150mm'),
+(21, 257, 2, 4, 2980000, 11920000, N'Máy cân bằng laser'),
+-- PN022: Nhập keo dán (Chờ xác nhận)
+(22, 129, 4, 20, 185000, 3700000, N'Keo dán Epoxy 2 thành phần'),
+(22, 234, 10, 50, 35000, 1750000, N'Silicon sealant'),
+(22, 283, 10, 100, 10500, 1050000, N'Keo 502 dán nhanh'),
+-- PN023: Nhập gạch men (Chờ xác nhận)
+(23, 139, 7, 100, 125000, 12500000, N'Gạch men 60x60 trắng'),
+(23, 244, 2, 30, 185000, 5550000, N'Gạch chịu nhiệt SK34'),
+-- PN024: Nhập máy biến áp (Chờ xác nhận)
+(24, 144, 2, 1, 75000000, 75000000, N'Máy biến áp 250KVA'),
+(24, 110, 2, 1, 20000000, 20000000, N'Bộ lưu điện UPS 1000VA'),
+-- PN025: Nhập VLXD (Chờ xác nhận)
+(25, 198, 11, 5, 2500000, 12500000, N'Cát xây dựng sạch xe 5m3'),
+(25, 199, 11, 4, 2200000, 8800000, N'Đá 1x2 xây dựng'),
+(25, 178, 7, 40, 162500, 6500000, N'Thạch cao tấm 9.5mm'),
+-- PN026: Nhập thép tấm đợt 2 (Đang soạn thảo)
+(26, 3, 1, 40, 450000, 18000000, N'Thép tấm SS400 6mm'),
+(26, 171, 7, 20, 680000, 13600000, N'Tôn mạ kẽm 0.5mm'),
+(26, 282, 7, 15, 430000, 6450000, N'Tôn sóng mạ màu'),
+-- PN027: Nhập hóa chất đợt 2 (Đang soạn thảo)
+(27, 195, 4, 5, 1800000, 9000000, N'Axit Sulfuric H2SO4 98%'),
+(27, 170, 4, 10, 650000, 6500000, N'Dung môi Xylene'),
+(27, 251, 4, 8, 880000, 7040000, N'Hóa chất mạ niken'),
+-- PN028: Nhập inox 316L (Đang soạn thảo)
+(28, 237, 1, 15, 2800000, 42000000, N'Thép không gỉ 316L tấm'),
+(28, 295, 9, 10, 1500000, 15000000, N'Thép sus304 ống phi 48'),
+(28, 233, 7, 5, 2000000, 10000000, N'Lưới inox 304 ô 10x10'),
+-- PN029: Nhập thép C45 (Đang soạn thảo)
+(29, 269, 1, 30, 755000, 22650000, N'Thép C45 tròn phi 50'),
+(29, 273, 7, 5, 2500000, 12500000, N'Thép SKD11 tấm 30mm'),
+(29, 307, 1, 10, 805000, 8050000, N'Thép S45C tròn phi 80'),
+-- PN030: Nhập máy phay 5 trục (Đang soạn thảo)
+(30, 123, 2, 1, 320000000, 320000000, N'Máy phay CNC 5 trục cao cấp'),
+-- PN031: Nhập thiết bị tự động hóa (Đang soạn thảo)
+(31, 1, 2, 20, 850000, 17000000, N'Bàn phím cơ gaming'),
+(31, 7, 2, 15, 1800000, 27000000, N'Màn hình LCD 24 inch'),
+(31, 119, 2, 10, 1100000, 11000000, N'Switch mạng 24 port'),
+-- PN032: Nhập nhựa kỹ thuật (Đang soạn thảo)
+(32, 6, 1, 150, 85000, 12750000, N'Nhựa PP nguyên sinh'),
+(32, 230, 7, 10, 950000, 9500000, N'Tấm Polycarbonate 6mm'),
+(32, 277, 7, 5, 1150000, 5750000, N'Tấm mica trong 5mm'),
+-- PN033: Nhập ống thép đen (Đang soạn thảo)
+(33, 285, 9, 50, 420000, 21000000, N'Thép ống đen DN80'),
+(33, 21, 9, 60, 285000, 17100000, N'Ống thép mạ kẽm D34'),
+(33, 142, 9, 30, 112000, 3360000, N'Ống nước PVC D60'),
+-- PN034: Nhập dây cáp điện lực (Đang soạn thảo)
+(34, 136, 8, 20, 780000, 15600000, N'Dây cáp điện 3x2.5mm2'),
+(34, 17, 8, 15, 720000, 10800000, N'Dây cáp điện khác'),
+(34, 206, 10, 40, 185000, 7400000, N'Băng keo cách điện'),
+-- PN035: Nhập phụ kiện khí nén (Đang soạn thảo)
+(35, 254, 9, 20, 380000, 7600000, N'Ống silicon chịu nhiệt'),
+(35, 261, 2, 15, 420000, 6300000, N'Dây curoa B65'),
+(35, 262, 2, 25, 78000, 1950000, N'Bạc đạn 6205 ZZ'),
+-- PN036: Hủy do NCC không giao (Đã hủy)
+(36, 19, 7, 30, 450000, 13500000, N'Kính cường lực 10mm'),
+(36, 178, 7, 50, 162500, 8125000, N'Thạch cao tấm 9.5mm'),
+(36, 198, 11, 1, 2900000, 2900000, N'Cát xây dựng'),
+-- PN037: Hủy do sai quy cách (Đã hủy)
+(37, 135, 10, 200, 25000, 5000000, N'Bao bì PE 30x40cm'),
+(37, 248, 7, 30, 160000, 4800000, N'Tấm foam PE 5mm'),
+-- PN038: Hủy do thay đổi NCC (Đã hủy)
+(38, 109, 6, 2, 15000000, 30000000, N'Hệ thống camera an ninh'),
+(38, 114, 6, 1, 18000000, 18000000, N'Hệ thống PCCC tự động'),
+(38, 119, 2, 5, 1600000, 8000000, N'Switch mạng 24 port'),
+-- PN039: Hủy do ngân sách (Đã hủy)
+(39, 116, 2, 2, 8500000, 17000000, N'Máy bơm nước công nghiệp'),
+(39, 119, 2, 3, 1600000, 4800000, N'Switch mạng'),
+(39, 257, 2, 4, 2350000, 9400000, N'Máy cân bằng laser'),
+-- PN040: Hủy do trùng (Đã hủy)
+(40, 105, 2, 1, 75000000, 75000000, N'Máy tiện CNC'),
+(40, 131, 6, 5, 650000, 3250000, N'Bộ dụng cụ sửa chữa'),
+(40, 165, 2, 1, 48000000, 48000000, N'Máy cắt plasma CNC');
+GO
