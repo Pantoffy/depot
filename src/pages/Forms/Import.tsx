@@ -1,6 +1,7 @@
 "use client";
-import { Search, SlidersHorizontal, ArrowUp, ArrowDown } from "lucide-react";
+import { Search, SlidersHorizontal, ArrowUp, ArrowDown, Download } from "lucide-react";
 import { getImportApiErrorMessage, importService } from "../../services/importService";
+import { downloadExcelFromApi } from "../../services/excelExportService";
 import { materialService } from "../../services/materialService";
 import { supplierService } from "../../services/supplierService";
 import { unitService } from "../../services/unitService";
@@ -58,11 +59,14 @@ interface Receipt {
   materials: Material[];
 }
 
+const IMPORT_DRAFT_KEY = "import_receipt_draft";
+
 // Page: Quản lý nhập kho
 export default function NhapKho() {
   const { canApprove } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [prefillDone, setPrefillDone] = useState(false);
+  const [receiptsLoaded, setReceiptsLoaded] = useState(false);
   // State: Danh sách phiếu nhập
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   // State: Trạng thái loading
@@ -149,7 +153,8 @@ export default function NhapKho() {
     if (
       availableMaterials.length === 0 ||
       availableUnits.length === 0 ||
-      availableSuppliers.length === 0
+      availableSuppliers.length === 0 ||
+      !receiptsLoaded
     )
       return;
 
@@ -190,6 +195,7 @@ export default function NhapKho() {
         });
 
         setMaterials(prefillMaterials);
+        setFormData((prev) => ({ ...prev, soPhieu: generateNextCode("PN"), soChungTu: po.code || "" }));
         setView("create");
         setPrefillDone(true);
         setSearchParams({});
@@ -205,7 +211,7 @@ export default function NhapKho() {
     };
 
     loadPurchaseOrder();
-  }, [availableMaterials, availableUnits, availableSuppliers, searchParams, prefillDone]);
+  }, [availableMaterials, availableUnits, availableSuppliers, receiptsLoaded, searchParams, prefillDone]);
 
   // Auto-open detail view when navigated from notification (?id=...)
   useEffect(() => {
@@ -315,6 +321,7 @@ export default function NhapKho() {
       showToast(getImportApiErrorMessage(err, "Lỗi tải dữ liệu phiếu nhập"), "error");
     } finally {
       setLoading(false);
+      setReceiptsLoaded(true);
     }
   };
 
@@ -341,7 +348,20 @@ export default function NhapKho() {
     null,
   );
 
+  const generateNextCode = (prefix: string): string => {
+    let maxNumber = 0;
+    for (const r of receipts) {
+      const code = (r as any).soPhieu || "";
+      if (code.startsWith(prefix) && code.length > prefix.length) {
+        const num = parseInt(code.slice(prefix.length), 10);
+        if (!isNaN(num)) maxNumber = Math.max(maxNumber, num);
+      }
+    }
+    return `${prefix}${String(maxNumber + 1).padStart(3, "0")}`;
+  };
+
   const resetForm = () => {
+    localStorage.removeItem(IMPORT_DRAFT_KEY);
     setFormData({
       soPhieu: "",
       ngayTao: new Date().toISOString().split("T")[0],
@@ -367,6 +387,15 @@ export default function NhapKho() {
     setSelectedWarehouseId(null);
     setWarehouseSearchTerm("");
   };
+
+  // Auto-save draft to localStorage when filling the create form
+  useEffect(() => {
+    if (view !== "create") return;
+    // Only save if there's meaningful content
+    if (!formData.soPhieu && !formData.tenNCC && !formData.kho && materials.length === 0) return;
+    const draft = { formData, materials, selectedSupplierId, selectedWarehouseId };
+    localStorage.setItem(IMPORT_DRAFT_KEY, JSON.stringify(draft));
+  }, [view, formData, materials, selectedSupplierId, selectedWarehouseId]);
 
   const handleSelectSupplier = (supplierId: number | null) => {
     if (!supplierId) {
@@ -718,6 +747,10 @@ export default function NhapKho() {
   };
 
   const handleEditReceipt = async (receipt: Receipt) => {
+    if (isReceiptConfirmed(receipt.trangThai)) {
+      showToast("Phiếu đã xác nhận không thể chỉnh sửa", "warning");
+      return;
+    }
     if (isReceiptCancelled(receipt.trangThai)) {
       showToast("Phiếu đã hủy không thể chỉnh sửa", "warning");
       return;
@@ -851,7 +884,7 @@ export default function NhapKho() {
       const receiptData = {
         code: formData.soPhieu,
         receiptNumber: formData.soPhieu,
-        importTime: new Date(formData.ngayTao).toISOString(),
+        importTime: new Date().toISOString(),
         supplierId: selectedSupplierId || 1,
         warehouseId: selectedWarehouseId || 1,
         status:
@@ -902,7 +935,11 @@ export default function NhapKho() {
     }
   };
 
-  const handleDeleteReceipt = (id: string) => {
+  const handleDeleteReceipt = (id: string, trangThai?: string) => {
+    if (trangThai && isReceiptConfirmed(trangThai)) {
+      showToast("Không thể xóa phiếu đã được xác nhận hoặc duyệt", "error");
+      return;
+    }
     showConfirm({
       message: "Bạn có chắc muốn xóa phiếu này?",
       onConfirm: async () => {
@@ -1023,6 +1060,10 @@ export default function NhapKho() {
       showToast("Phiếu này đã được hủy", "success");
       return;
     }
+    if (normalizeReceiptStatus(receipt.trangThai) !== RECEIPT_STATUS.DRAFT) {
+      showToast("Chỉ được hủy phiếu đang ở trạng thái Đang soạn thảo", "warning");
+      return;
+    }
 
     const isConfirmed = isReceiptConfirmed(receipt.trangThai);
     showConfirm({
@@ -1111,7 +1152,24 @@ export default function NhapKho() {
   const breadcrumbAction = view === "list" ? (
     <button
       onClick={() => {
-        resetForm();
+        const savedDraft = localStorage.getItem(IMPORT_DRAFT_KEY);
+        if (savedDraft) {
+          try {
+            const draft = JSON.parse(savedDraft);
+            const nextCode = generateNextCode("PN");
+            setFormData({ ...draft.formData, soPhieu: nextCode });
+            setMaterials(draft.materials || []);
+            setSelectedSupplierId(draft.selectedSupplierId ?? null);
+            setSelectedWarehouseId(draft.selectedWarehouseId ?? null);
+            showToast("Đã khôi phục phiếu nhập đang soạn dở", "info");
+          } catch {
+            resetForm();
+            setFormData((prev) => ({ ...prev, soPhieu: generateNextCode("PN") }));
+          }
+        } else {
+          resetForm();
+          setFormData((prev) => ({ ...prev, soPhieu: generateNextCode("PN") }));
+        }
         setView("create");
       }}
       className="module-primary-btn inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white transition-all duration-200 shadow-sm"
@@ -1198,6 +1256,22 @@ export default function NhapKho() {
                   Quản lý phiếu nhập kho hàng hóa.
                 </p>
               </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={async () => {
+                    try {
+                      await downloadExcelFromApi("/api/ExcelExport/import-receipts", `phieu-nhap-kho_${new Date().toISOString().slice(0, 10)}.xlsx`);
+                      showToast("Đã xuất danh sách phiếu nhập kho!", "success");
+                    } catch (e: any) {
+                      showToast(e.message || "Lỗi khi xuất Excel", "error");
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 shadow-sm transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  Xuất Excel
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1218,95 +1292,91 @@ export default function NhapKho() {
               </div>
               <div className="flex gap-2 w-full sm:w-auto">
                 <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setIsFilterOpen(!isFilterOpen)}
-                    className="inline-flex items-center gap-2 h-[48px] px-4 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200 shadow-sm"
-                  >
-                    <SlidersHorizontal className="w-4 h-4" />
-                    Bộ lọc
-                  </button>
+                  {(() => {
+                    const activeCount = (filters.kho ? 1 : 0) + (filters.trangThai ? 1 : 0);
+                    const STATUS_DOTS: Record<string, string> = {
+                      [RECEIPT_STATUS.DRAFT]: "bg-gray-400",
+                      [RECEIPT_STATUS.PENDING]: "bg-amber-400",
+                      [RECEIPT_STATUS.APPROVED]: "bg-emerald-500",
+                      [RECEIPT_STATUS.CANCELLED]: "bg-rose-400",
+                    };
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setIsFilterOpen(!isFilterOpen)}
+                          className={`relative inline-flex h-[48px] items-center gap-2 px-4 text-sm font-medium border rounded-xl shadow-sm transition-colors ${
+                            activeCount > 0
+                              ? "bg-cyan-50 border-cyan-300 text-cyan-700 dark:bg-cyan-900/20 dark:border-cyan-700 dark:text-cyan-300"
+                              : "text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+                          }`}
+                        >
+                          <SlidersHorizontal className="w-4 h-4" />
+                          Bộ lọc
+                          {activeCount > 0 && (
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-600 text-[10px] font-bold text-white">
+                              {activeCount}
+                            </span>
+                          )}
+                        </button>
 
-                  {isFilterOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-40"
-                        onClick={() => setIsFilterOpen(false)}
-                      />
-                      <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl z-50 p-4">
-                        <div className="space-y-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                              Kho
-                            </label>
-                            <div className="space-y-1 max-h-40 overflow-y-auto">
-                              {warehouseFilterOptions.map((kho) => (
-                                <label
-                                  key={kho}
-                                  className="flex items-center gap-2 p-1 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={filters.kho === kho}
-                                    onChange={(e) => {
-                                      setFilters({
-                                        ...filters,
-                                        kho: e.target.checked ? kho : "",
-                                      });
-                                      setCurrentPage(1);
-                                    }}
-                                    className="rounded"
-                                  />
-                                  <span className="text-sm text-gray-700 dark:text-gray-300">
-                                    {kho}
-                                  </span>
-                                </label>
-                              ))}
+                        {isFilterOpen && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setIsFilterOpen(false)} />
+                            <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                              <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-4 py-3">
+                                <span className="text-sm font-semibold text-gray-800 dark:text-white">Bộ lọc</span>
+                                {activeCount > 0 && (
+                                  <button
+                                    onClick={() => { setFilters({ kho: "", trangThai: "" }); setCurrentPage(1); }}
+                                    className="text-xs font-medium text-rose-500 hover:text-rose-600 transition-colors"
+                                  >
+                                    Xóa tất cả
+                                  </button>
+                                )}
+                              </div>
+                              <div className="max-h-[380px] overflow-y-auto p-4 space-y-5">
+                                <div>
+                                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Kho</p>
+                                  <div className="space-y-1 max-h-36 overflow-y-auto">
+                                    {warehouseFilterOptions.map((kho) => (
+                                      <label key={kho} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={filters.kho === kho}
+                                          onChange={(e) => { setFilters({ ...filters, kho: e.target.checked ? kho : "" }); setCurrentPage(1); }}
+                                          className="rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+                                        />
+                                        <span className="h-2 w-2 rounded-full bg-sky-400" />
+                                        <span className="text-sm text-gray-700 dark:text-gray-300">{kho}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div>
+                                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Trạng thái</p>
+                                  <div className="space-y-1">
+                                    {statusFilterOptions.map((status) => (
+                                      <label key={status} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={filters.trangThai === status}
+                                          onChange={(e) => { setFilters({ ...filters, trangThai: e.target.checked ? status : "" }); setCurrentPage(1); }}
+                                          className="rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+                                        />
+                                        <span className={`h-2 w-2 rounded-full ${STATUS_DOTS[status] ?? "bg-gray-400"}`} />
+                                        <span className="text-sm text-gray-700 dark:text-gray-300">{status}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                              Trạng thái
-                            </label>
-                            <div className="space-y-1">
-                              {statusFilterOptions.map((status) => (
-                                <label
-                                  key={status}
-                                  className="flex items-center gap-2 p-1 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={filters.trangThai === status}
-                                    onChange={(e) => {
-                                      setFilters({
-                                        ...filters,
-                                        trangThai: e.target.checked
-                                          ? status
-                                          : "",
-                                      });
-                                      setCurrentPage(1);
-                                    }}
-                                    className="rounded"
-                                  />
-                                  <span className="text-sm text-gray-700 dark:text-gray-300">
-                                    {status}
-                                  </span>
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-
-                          <button
-                            onClick={() => setIsFilterOpen(false)}
-                            className="module-primary-btn w-full px-4 py-2.5 font-medium text-white transition-colors"
-                          >
-                            Áp dụng
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  )}
+                          </>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
 
                 <CustomSelect
@@ -1452,7 +1522,7 @@ export default function NhapKho() {
                             </svg>
                           </button>
                           <button
-                            onClick={() => handleDeleteReceipt(receipt.id)}
+                            onClick={() => handleDeleteReceipt(receipt.id, receipt.trangThai)}
                             className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
                           >
                             <svg
@@ -1518,11 +1588,8 @@ export default function NhapKho() {
               <input
                 type="text"
                 value={formData.soPhieu}
-                onChange={(e) =>
-                  setFormData({ ...formData, soPhieu: e.target.value })
-                }
-                placeholder="Tự động sinh hoặc nhập số phiếu"
-                className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                readOnly
+                className="h-[48px] w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-gray-500 shadow-sm cursor-not-allowed dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
               />
             </div>
             <div>
@@ -1532,10 +1599,8 @@ export default function NhapKho() {
               <input
                 type="date"
                 value={formData.ngayTao}
-                onChange={(e) =>
-                  setFormData({ ...formData, ngayTao: e.target.value })
-                }
-                className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                readOnly
+                className="h-[48px] w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-gray-500 shadow-sm cursor-not-allowed dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
               />
             </div>
             <div>
@@ -1586,7 +1651,7 @@ export default function NhapKho() {
                     <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
                       <ul className="max-h-56 overflow-auto py-1">
                         {filteredAvailableSuppliers
-                          .slice(0, 8)
+                        //  .slice(0, 8)
                           .map((supplier: any) => (
                             <li key={supplier.id}>
                               <button
@@ -1692,7 +1757,7 @@ export default function NhapKho() {
             </div>
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Số Chứng Từ
+                Mã Đơn Đặt Hàng
               </label>
               <input
                 type="text"
@@ -1700,7 +1765,7 @@ export default function NhapKho() {
                 onChange={(e) =>
                   setFormData({ ...formData, soChungTu: e.target.value })
                 }
-                placeholder="Nhập số chứng từ"
+                placeholder="Nhập mã đơn đặt hàng"
                 className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
               />
             </div>
@@ -2128,7 +2193,7 @@ export default function NhapKho() {
                         </svg>
                       </button>
                     )}
-                  {!isReceiptCancelled(selectedReceipt.trangThai) && (
+                  {normalizeReceiptStatus(selectedReceipt.trangThai) === RECEIPT_STATUS.DRAFT && (
                     <button
                       onClick={() => handleCancelReceipt(selectedReceipt)}
                       aria-label="Hủy phiếu"
@@ -2171,7 +2236,7 @@ export default function NhapKho() {
                     </svg>
                   </button>
                   <button
-                    onClick={() => handleDeleteReceipt(selectedReceipt.id)}
+                    onClick={() => handleDeleteReceipt(selectedReceipt.id, selectedReceipt.trangThai)}
                     aria-label="Xóa phiếu"
                     title="Xóa phiếu"
                     className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-600 text-white transition-colors hover:bg-red-700"
@@ -2309,30 +2374,6 @@ export default function NhapKho() {
                     {selectedReceipt.soPhieu}
                   </span>
                 </div>
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Nhà cung cấp
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                    {selectedReceipt.tenNCC || "Chưa có"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Kho nhập
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                    {selectedReceipt.kho || "Chưa có"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Số chứng từ
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                    {selectedReceipt.soChungTu || "Chưa có"}
-                  </p>
-                </div>
               </div>
 
               <div className="flex items-center justify-between mb-3">
@@ -2460,7 +2501,7 @@ export default function NhapKho() {
                     )}
                     {selectedReceipt.soChungTu && (
                       <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-amber-50 dark:bg-amber-500/10">
-                        <span className="text-amber-700 dark:text-amber-300">Số chứng từ:</span>
+                        <span className="text-amber-700 dark:text-amber-300">Mã đơn đặt hàng:</span>
                         <span className="font-medium text-amber-900 dark:text-amber-100">{selectedReceipt.soChungTu}</span>
                       </div>
                     )}

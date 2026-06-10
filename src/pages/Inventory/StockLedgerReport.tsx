@@ -14,6 +14,7 @@ import {
 import { materialService, type Material } from "../../services/materialService";
 import { unitService, type Unit } from "../../services/unitService";
 import { warehouseService, type Warehouse } from "../../services/warehouseService";
+import { downloadExcelFromApi } from "../../services/excelExportService";
 
 type MovementType = "import" | "export";
 
@@ -411,55 +412,17 @@ export default function StockLedgerReport() {
     setCurrentPage(1);
   };
 
-  const handleExportCsv = () => {
+  const handleExportCsv = async () => {
     if (rows.length === 0) {
       showToast("Không có dữ liệu để xuất", "warning");
       return;
     }
-
-    const headers = [
-      "Kho",
-      "Mã vật tư",
-      "Tên vật tư",
-      "Tồn đầu kỳ",
-      "Nhập trong kỳ",
-      "Xuất trong kỳ",
-      "Tồn cuối kỳ",
-      "Đơn vị",
-      "Cập nhật gần nhất",
-    ];
-
-    const escapeCsv = (value: string) => {
-      if (value.includes(",") || value.includes('"') || value.includes("\n")) {
-        return `"${value.replace(/"/g, '""')}"`;
-      }
-      return value;
-    };
-
-    const csvRows = rows.map((row) => [
-      row.warehouseName,
-      row.materialCode,
-      row.materialName,
-      formatNumber(row.openingQuantity),
-      formatNumber(row.importQuantity),
-      formatNumber(row.exportQuantity),
-      formatNumber(row.endingQuantity),
-      row.unitName,
-      row.lastActivityDate ? formatDateTime(row.lastActivityDate) : "-",
-    ]);
-
-    const csvContent = [headers, ...csvRows]
-      .map((line) => line.map((value) => escapeCsv(String(value))).join(","))
-      .join("\n");
-
-    const blob = new Blob(["\uFEFF", csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `bao-cao-xuat-nhap-ton-${startDate}_den_${endDate}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-    showToast(`Đã xuất ${rows.length} dòng báo cáo`, "success");
+    try {
+      await downloadExcelFromApi("/api/ExcelExport/inventory", `ton-kho_${startDate}_den_${endDate}.xlsx`);
+      showToast(`Đã xuất ${rows.length} dòng báo cáo`, "success");
+    } catch (error: any) {
+      showToast(error.message || "Lỗi khi xuất Excel", "error");
+    }
   };
 
   return (
@@ -523,7 +486,7 @@ export default function StockLedgerReport() {
                     onClick={handleExportCsv}
                     className="inline-flex items-center justify-center rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-medium text-cyan-700 transition-colors hover:bg-cyan-100 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-200 dark:hover:bg-cyan-500/20"
                   >
-                    Xuất CSV
+                    Xuất Excel
                   </button>
                 </div>
               </div>

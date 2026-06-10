@@ -15,6 +15,27 @@ interface DecodedToken {
   name?: string;
   role?: string;
   exp?: number;
+  [key: string]: unknown;
+}
+
+function extractUsername(decoded: DecodedToken): string {
+  return (
+    decoded.unique_name ||
+    decoded.name ||
+    decoded.sub ||
+    decoded.email ||
+    (decoded["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"] as string) ||
+    (decoded["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname"] as string) ||
+    ""
+  );
+}
+
+function extractRole(decoded: DecodedToken): string {
+  return (
+    decoded.role ||
+    (decoded["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] as string) ||
+    "Nhân viên kho"
+  );
 }
 
 export interface AuthContextType {
@@ -45,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const storedToken = localStorage.getItem("accessToken");
     const storedRefreshToken = localStorage.getItem("refreshToken");
     const storedUserId = localStorage.getItem("userId");
+    const storedUsername = localStorage.getItem("username");
 
     if (storedToken && storedRefreshToken && storedUserId) {
       try {
@@ -56,11 +78,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           refreshAccessToken(storedRefreshToken, parseInt(storedUserId));
         } else {
           // Token still valid, restore session
-          const roleFromToken = decoded.role || (decoded as any)["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] || "Nhân viên kho";
           const decodedUser: AuthUser = {
             id: decoded.nameid || "",
-            username: decoded.unique_name || "",
-            role: roleFromToken as AuthUser["role"],
+            username: extractUsername(decoded) || storedUsername || "",
+            role: extractRole(decoded) as AuthUser["role"],
           };
           setUser(decodedUser);
           setAccessToken(storedToken);
@@ -98,16 +119,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
       const decoded = jwtDecode<DecodedToken>(data.accessToken);
 
-      // Try multiple possible role claim names
-      const roleFromToken = decoded.role || (decoded as any)["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] || "Nhân viên kho";
-      
-      // Try multiple possible username claim names
-      const usernameFromToken = decoded.unique_name || decoded.sub || decoded.email || decoded.name || "";
-
       const decodedUser: AuthUser = {
         id: decoded.nameid || "",
-        username: usernameFromToken,
-        role: roleFromToken as AuthUser["role"],
+        username: extractUsername(decoded),
+        role: extractRole(decoded) as AuthUser["role"],
       };
 
       setAccessToken(data.accessToken);
@@ -142,20 +157,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Debug: Log all claims in token
       console.log("JWT Token Claims:", decoded);
 
-      // Try multiple possible role claim names
-      const roleFromToken = decoded.role || (decoded as any)["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] || "Nhân viên kho";
-      
-      // Try multiple possible username claim names
-      const usernameFromToken = decoded.unique_name || decoded.sub || decoded.email || decoded.name || username;
-      
-      console.log("Role extracted:", roleFromToken);
-      console.log("Username extracted:", usernameFromToken);
+      const extractedUsername = extractUsername(decoded) || username;
+      const extractedRole = extractRole(decoded);
+      console.log("Role extracted:", extractedRole);
+      console.log("Username extracted:", extractedUsername);
+      console.log("JWT Token Claims:", decoded);
 
-      // Extract user info from JWT claims
       const decodedUser: AuthUser = {
         id: decoded.nameid || "",
-        username: usernameFromToken,
-        role: roleFromToken as AuthUser["role"],
+        username: extractedUsername,
+        role: extractedRole as AuthUser["role"],
       };
 
       setAccessToken(data.accessToken);
@@ -172,6 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("accessToken", data.accessToken);
       localStorage.setItem("refreshToken", data.refreshToken);
       localStorage.setItem("userId", userIdFromToken.toString());
+      localStorage.setItem("username", extractedUsername);
     } catch (error) {
       console.error("Login error:", error);
       throw error;
@@ -189,6 +201,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
     localStorage.removeItem("userId");
+    localStorage.removeItem("username");
   };
 
   const hasRole = (role: string) => {

@@ -17,6 +17,7 @@ import { unitService } from "../../services/unitService";
 import { warehouseService } from "../../services/warehouseService";
 import { useSearchParams } from "react-router";
 import { useAuth } from "../../context/AuthContext";
+import { downloadExcelFromApi } from "../../services/excelExportService";
 
 interface MaterialLine {
   stt: number;
@@ -61,6 +62,7 @@ const EXPORT_REASON_INTERNAL_ALLOCATE = "Cấp phát nội bộ";
 const EXPORT_REASON_INTERNAL_TRANSFER = "Chuyển nội bộ";
 const EXPORT_REASON_DAMAGE = "Hỏng hóc";
 const EXPORT_REASON_OTHER = "Khác";
+const EXPORT_DRAFT_KEY = "export_receipt_draft";
 
 export default function XuatKho() {
   const { canApprove } = useAuth();
@@ -93,6 +95,8 @@ export default function XuatKho() {
 
   const [isReasonDropdownOpen, setIsReasonDropdownOpen] = useState(false);
   const reasonDropdownRef = useRef<HTMLDivElement>(null);
+  const [isCustomLyDo, setIsCustomLyDo] = useState(false);
+  const lyDoInputRef = useRef<HTMLInputElement>(null);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<number | null>(
     null,
   );
@@ -389,7 +393,21 @@ export default function XuatKho() {
     return "status-pending";
   };
 
+  const generateNextCode = (prefix: string): string => {
+    let maxNumber = 0;
+    for (const r of receipts) {
+      const code = (r as any).soPhieu || "";
+      if (code.startsWith(prefix) && code.length > prefix.length) {
+        const num = parseInt(code.slice(prefix.length), 10);
+        if (!isNaN(num)) maxNumber = Math.max(maxNumber, num);
+      }
+    }
+    return `${prefix}${String(maxNumber + 1).padStart(3, "0")}`;
+  };
+
   const resetForm = () => {
+    localStorage.removeItem(EXPORT_DRAFT_KEY);
+    setIsCustomLyDo(false);
     setFormData({
       soPhieu: "",
       ngayTao: new Date().toISOString().split("T")[0],
@@ -413,6 +431,14 @@ export default function XuatKho() {
     setWarehouseSearchTerm("");
     setMaterialSearchTerm("");
   };
+
+  // Auto-save draft to localStorage when filling the create form
+  useEffect(() => {
+    if (view !== "create") return;
+    if (!formData.soPhieu && !formData.nguoiNhan && !formData.kho && materials.length === 0) return;
+    const draft = { formData, materials, selectedWarehouseId };
+    localStorage.setItem(EXPORT_DRAFT_KEY, JSON.stringify(draft));
+  }, [view, formData, materials, selectedWarehouseId]);
 
   const handleSelectWarehouse = (warehouseId: number | null) => {
     if (!warehouseId) {
@@ -644,7 +670,7 @@ export default function XuatKho() {
     return {
       code: receipt.soPhieu,
       receiptNumber: receipt.soPhieu,
-      exportDate: new Date(receipt.ngayTao).toISOString(),
+      exportDate: new Date().toISOString(),
       warehouseId: receipt.warehouseId || 1,
       receiverName: receipt.receiverName,
       reason: receipt.lyDo || "",
@@ -723,6 +749,10 @@ export default function XuatKho() {
   };
 
   const handleEditReceipt = async (receipt: Receipt) => {
+    if (isReceiptConfirmed(receipt.trangThai)) {
+      showToast("Phiếu đã xác nhận không thể chỉnh sửa", "warning");
+      return;
+    }
     if (isReceiptCancelled(receipt.trangThai)) {
       showToast("Phiếu đã hủy không thể chỉnh sửa", "warning");
       return;
@@ -745,7 +775,13 @@ export default function XuatKho() {
       nguoiNhan: receiptForEdit.receiverName,
       soChungTu: receiptForEdit.soChungTu || "",
       kho: receiptForEdit.kho,
-      lyDo: receiptForEdit.lyDo || EXPORT_REASON_SALE,
+      lyDo: (() => {
+        const v = receiptForEdit.lyDo || EXPORT_REASON_SALE;
+        const predefined = [EXPORT_REASON_SALE, EXPORT_REASON_INTERNAL_ALLOCATE, EXPORT_REASON_INTERNAL_TRANSFER, EXPORT_REASON_DAMAGE, EXPORT_REASON_OTHER];
+        if (!predefined.includes(v)) { setIsCustomLyDo(true); return v; }
+        setIsCustomLyDo(false);
+        return v;
+      })(),
     });
 
     if (receiptForEdit.warehouseId) {
@@ -898,7 +934,11 @@ export default function XuatKho() {
     }
   };
 
-  const handleDeleteReceipt = (id: string) => {
+  const handleDeleteReceipt = (id: string, trangThai?: string) => {
+    if (trangThai && isReceiptConfirmed(trangThai)) {
+      showToast("Không thể xóa phiếu đã được xác nhận hoặc duyệt", "error");
+      return;
+    }
     showConfirm({
       message: "Bạn có chắc muốn xóa phiếu này?",
       onConfirm: async () => {
@@ -1026,6 +1066,10 @@ export default function XuatKho() {
       showToast("Phiếu này đã được hủy", "success");
       return;
     }
+    if (normalizeReceiptStatus(receipt.trangThai) !== RECEIPT_STATUS.DRAFT) {
+      showToast("Chỉ được hủy phiếu đang ở trạng thái Đang soạn thảo", "warning");
+      return;
+    }
 
     const wasConfirmed = isReceiptConfirmed(receipt.trangThai);
     showConfirm({
@@ -1070,39 +1114,17 @@ export default function XuatKho() {
     });
   };
 
-  const handleExportToCSV = () => {
+  const handleExportToCSV = async () => {
     if (receipts.length === 0) {
       showToast("Không có dữ liệu để xuất", "warning");
       return;
     }
-
-    const headers = [
-      "Số Phiếu",
-      "Ngày Xuất",
-      "Người Nhận",
-      "Kho",
-      "Tổng Tiền",
-      "Trạng Thái",
-    ];
-    const rows = receipts.map((r) => [
-      r.soPhieu,
-      new Date(r.ngayTao).toLocaleDateString("vi-VN"),
-      r.receiverName,
-      r.kho,
-      r.tongTien.toLocaleString("vi-VN"),
-      getReceiptStatusLabel(r.trangThai),
-    ]);
-
-    const csvContent = [
-      headers.join(","),
-      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
-    ].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `phieu-xuat-${new Date().toISOString().split("T")[0]}.csv`;
-    link.click();
-    showToast("Xuất dữ liệu thành công", "success");
+    try {
+      await downloadExcelFromApi("/api/ExcelExport/export-receipts", `phieu-xuat-kho_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      showToast("Xuất dữ liệu thành công", "success");
+    } catch (error: any) {
+      showToast(error.message || "Lỗi khi xuất Excel", "error");
+    }
   };
 
   const warehouseFilterOptions = Array.from(
@@ -1155,7 +1177,23 @@ export default function XuatKho() {
   const breadcrumbAction = view === "list" ? (
     <button
       onClick={() => {
-        resetForm();
+        const savedDraft = localStorage.getItem(EXPORT_DRAFT_KEY);
+        if (savedDraft) {
+          try {
+            const draft = JSON.parse(savedDraft);
+            const nextCode = generateNextCode("PX");
+            setFormData({ ...draft.formData, soPhieu: nextCode });
+            setMaterials(draft.materials || []);
+            setSelectedWarehouseId(draft.selectedWarehouseId ?? null);
+            showToast("Đã khôi phục phiếu xuất đang soạn dở", "info");
+          } catch {
+            resetForm();
+            setFormData((prev) => ({ ...prev, soPhieu: generateNextCode("PX") }));
+          }
+        } else {
+          resetForm();
+          setFormData((prev) => ({ ...prev, soPhieu: generateNextCode("PX") }));
+        }
         setView("create");
       }}
       className="module-primary-btn inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white transition-all duration-200 shadow-sm"
@@ -1250,7 +1288,7 @@ export default function XuatKho() {
                       d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
                     />
                   </svg>
-                  Export
+                  Xuất Excel
                 </button>
               </div>
             </div>
@@ -1274,95 +1312,91 @@ export default function XuatKho() {
 
               <div className="flex gap-2 w-full sm:w-auto">
                 <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setIsFilterOpen(!isFilterOpen)}
-                    className="inline-flex items-center gap-2 h-[48px] px-4 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200 shadow-sm"
-                  >
-                    <SlidersHorizontal className="w-4 h-4" />
-                    Bộ lọc
-                  </button>
+                  {(() => {
+                    const activeCount = (filters.kho ? 1 : 0) + (filters.trangThai ? 1 : 0);
+                    const STATUS_DOTS: Record<string, string> = {
+                      [RECEIPT_STATUS.DRAFT]: "bg-gray-400",
+                      [RECEIPT_STATUS.PENDING]: "bg-amber-400",
+                      [RECEIPT_STATUS.APPROVED]: "bg-emerald-500",
+                      [RECEIPT_STATUS.CANCELLED]: "bg-rose-400",
+                    };
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setIsFilterOpen(!isFilterOpen)}
+                          className={`relative inline-flex h-[48px] items-center gap-2 px-4 text-sm font-medium border rounded-xl shadow-sm transition-colors ${
+                            activeCount > 0
+                              ? "bg-cyan-50 border-cyan-300 text-cyan-700 dark:bg-cyan-900/20 dark:border-cyan-700 dark:text-cyan-300"
+                              : "text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+                          }`}
+                        >
+                          <SlidersHorizontal className="w-4 h-4" />
+                          Bộ lọc
+                          {activeCount > 0 && (
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-600 text-[10px] font-bold text-white">
+                              {activeCount}
+                            </span>
+                          )}
+                        </button>
 
-                  {isFilterOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-40"
-                        onClick={() => setIsFilterOpen(false)}
-                      />
-                      <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl z-50 p-4">
-                        <div className="space-y-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                              Kho
-                            </label>
-                            <div className="space-y-1 max-h-40 overflow-y-auto">
-                              {warehouseFilterOptions.map((kho) => (
-                                <label
-                                  key={kho}
-                                  className="flex items-center gap-2 p-1 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={filters.kho === kho}
-                                    onChange={(e) => {
-                                      setFilters({
-                                        ...filters,
-                                        kho: e.target.checked ? kho : "",
-                                      });
-                                      setCurrentPage(1);
-                                    }}
-                                    className="rounded"
-                                  />
-                                  <span className="text-sm text-gray-700 dark:text-gray-300">
-                                    {kho}
-                                  </span>
-                                </label>
-                              ))}
+                        {isFilterOpen && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setIsFilterOpen(false)} />
+                            <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                              <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-4 py-3">
+                                <span className="text-sm font-semibold text-gray-800 dark:text-white">Bộ lọc</span>
+                                {activeCount > 0 && (
+                                  <button
+                                    onClick={() => { setFilters({ kho: "", trangThai: "" }); setCurrentPage(1); }}
+                                    className="text-xs font-medium text-rose-500 hover:text-rose-600 transition-colors"
+                                  >
+                                    Xóa tất cả
+                                  </button>
+                                )}
+                              </div>
+                              <div className="max-h-[380px] overflow-y-auto p-4 space-y-5">
+                                <div>
+                                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Kho</p>
+                                  <div className="space-y-1 max-h-36 overflow-y-auto">
+                                    {warehouseFilterOptions.map((kho) => (
+                                      <label key={kho} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={filters.kho === kho}
+                                          onChange={(e) => { setFilters({ ...filters, kho: e.target.checked ? kho : "" }); setCurrentPage(1); }}
+                                          className="rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+                                        />
+                                        <span className="h-2 w-2 rounded-full bg-sky-400" />
+                                        <span className="text-sm text-gray-700 dark:text-gray-300">{kho}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div>
+                                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Trạng thái</p>
+                                  <div className="space-y-1">
+                                    {statusFilterOptions.map((status) => (
+                                      <label key={status} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={filters.trangThai === status}
+                                          onChange={(e) => { setFilters({ ...filters, trangThai: e.target.checked ? status : "" }); setCurrentPage(1); }}
+                                          className="rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+                                        />
+                                        <span className={`h-2 w-2 rounded-full ${STATUS_DOTS[status] ?? "bg-gray-400"}`} />
+                                        <span className="text-sm text-gray-700 dark:text-gray-300">{status}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                              Trạng thái
-                            </label>
-                            <div className="space-y-1">
-                              {statusFilterOptions.map((status) => (
-                                <label
-                                  key={status}
-                                  className="flex items-center gap-2 p-1 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={filters.trangThai === status}
-                                    onChange={(e) => {
-                                      setFilters({
-                                        ...filters,
-                                        trangThai: e.target.checked
-                                          ? status
-                                          : "",
-                                      });
-                                      setCurrentPage(1);
-                                    }}
-                                    className="rounded"
-                                  />
-                                  <span className="text-sm text-gray-700 dark:text-gray-300">
-                                    {status}
-                                  </span>
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-
-                          <button
-                            onClick={() => setIsFilterOpen(false)}
-                            className="module-primary-btn w-full px-4 py-2.5 font-medium text-white transition-colors"
-                          >
-                            Áp dụng
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  )}
+                          </>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
 
                 <CustomSelect
@@ -1508,7 +1542,7 @@ export default function XuatKho() {
                             </svg>
                           </button>
                           <button
-                            onClick={() => handleDeleteReceipt(receipt.id)}
+                            onClick={() => handleDeleteReceipt(receipt.id, receipt.trangThai)}
                             className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
                             aria-label="Xóa phiếu xuất"
                           >
@@ -1577,11 +1611,8 @@ export default function XuatKho() {
               <input
                 type="text"
                 value={formData.soPhieu}
-                onChange={(e) =>
-                  setFormData({ ...formData, soPhieu: e.target.value })
-                }
-                placeholder="Tự động sinh hoặc nhập số phiếu"
-                className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                readOnly
+                className="h-[48px] w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-gray-500 shadow-sm cursor-not-allowed dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
               />
             </div>
 
@@ -1592,10 +1623,8 @@ export default function XuatKho() {
               <input
                 type="date"
                 value={formData.ngayTao}
-                onChange={(e) =>
-                  setFormData({ ...formData, ngayTao: e.target.value })
-                }
-                className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                readOnly
+                className="h-[48px] w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-gray-500 shadow-sm cursor-not-allowed dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
               />
             </div>
 
@@ -1621,12 +1650,18 @@ export default function XuatKho() {
               <div ref={reasonDropdownRef} className="relative">
                 <div className="relative">
                   <input
+                    ref={lyDoInputRef}
                     type="text"
-                    value={formData.lyDo}
+                    value={isCustomLyDo ? formData.lyDo : formData.lyDo}
+                    readOnly={!isCustomLyDo}
                     onChange={(e) => setFormData({ ...formData, lyDo: e.target.value })}
-                    onFocus={() => setIsReasonDropdownOpen(true)}
-                    placeholder="Nhập hoặc chọn lý do xuất"
-                    className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 pr-10 text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                    onFocus={() => { if (!isCustomLyDo) setIsReasonDropdownOpen(true); }}
+                    placeholder={isCustomLyDo ? "Nhập lý do..." : "Chọn lý do xuất"}
+                    className={`h-[48px] w-full rounded-xl border px-4 pr-10 shadow-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white ${
+                      isCustomLyDo
+                        ? "border-cyan-400 bg-white text-gray-900 placeholder-gray-400 cursor-text"
+                        : "border-gray-200 bg-white text-gray-900 placeholder-gray-400 cursor-pointer"
+                    }`}
                   />
                   <button
                     type="button"
@@ -1646,11 +1681,20 @@ export default function XuatKho() {
                           <button
                             type="button"
                             onClick={() => {
-                              setFormData({ ...formData, lyDo: opt.value });
-                              setIsReasonDropdownOpen(false);
+                              if (opt.value === EXPORT_REASON_OTHER) {
+                                setIsCustomLyDo(true);
+                                setFormData({ ...formData, lyDo: "" });
+                                setIsReasonDropdownOpen(false);
+                                setTimeout(() => lyDoInputRef.current?.focus(), 50);
+                              } else {
+                                setIsCustomLyDo(false);
+                                setFormData({ ...formData, lyDo: opt.value });
+                                setIsReasonDropdownOpen(false);
+                              }
                             }}
                             className={`w-full px-4 py-2.5 text-left text-sm transition-colors ${
-                              formData.lyDo === opt.value
+                              (!isCustomLyDo && formData.lyDo === opt.value) ||
+                              (isCustomLyDo && opt.value === EXPORT_REASON_OTHER)
                                 ? "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-white"
                                 : "text-gray-800 hover:bg-gray-50 dark:text-gray-100 dark:hover:bg-gray-800/50"
                             }`}
@@ -1744,20 +1788,6 @@ export default function XuatKho() {
               </div>
             </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Số Chứng Từ
-              </label>
-              <input
-                type="text"
-                value={formData.soChungTu}
-                onChange={(e) =>
-                  setFormData({ ...formData, soChungTu: e.target.value })
-                }
-                placeholder="Nhập số chứng từ"
-                className="h-[48px] w-full rounded-xl border border-gray-200 bg-white px-4 text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-              />
-            </div>
           </div>
 
           <div className="mb-8 rounded-[24px] border border-cyan-200 bg-white/90 p-4 shadow-sm backdrop-blur dark:border-cyan-500/20 dark:bg-slate-900/70 lg:p-6">
@@ -2189,7 +2219,7 @@ export default function XuatKho() {
                       </svg>
                     </button>
                   )}
-                {!isReceiptCancelled(selectedReceipt.trangThai) && (
+                {normalizeReceiptStatus(selectedReceipt.trangThai) === RECEIPT_STATUS.DRAFT && (
                   <button
                     onClick={() => handleCancelReceipt(selectedReceipt)}
                     aria-label="Hủy phiếu"
@@ -2232,7 +2262,7 @@ export default function XuatKho() {
                   </svg>
                 </button>
                 <button
-                  onClick={() => handleDeleteReceipt(selectedReceipt.id)}
+                  onClick={() => handleDeleteReceipt(selectedReceipt.id, selectedReceipt.trangThai)}
                   aria-label="Xóa phiếu"
                   title="Xóa phiếu"
                   className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-600 text-white transition-colors hover:bg-red-700"
@@ -2422,18 +2452,13 @@ export default function XuatKho() {
                 </div>
               </div>
 
-              <div className="text-xs space-y-1 mb-2 text-gray-600 dark:text-gray-400">
-                <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-amber-50 dark:bg-amber-500/10">
-                  <span className="text-amber-700 dark:text-amber-300">Số chứng từ:</span>
-                  <span className="font-medium text-amber-900 dark:text-amber-100">{selectedReceipt.soChungTu || "-"}</span>
-                </div>
-              </div>
 
-              <div className="mb-3 rounded-lg border border-gray-100 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800/50">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Lý do xuất</p>
-                <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">
-                  {selectedReceipt.lyDo || "-"}
-                </p>
+
+              <div className="text-xs space-y-1 mb-2 text-gray-600 dark:text-gray-400">
+                <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-orange-50 dark:bg-orange-500/10">
+                  <span className="text-orange-700 dark:text-orange-300">Lý do xuất:</span>
+                  <span className="font-medium text-orange-900 dark:text-orange-100 text-right">{selectedReceipt.lyDo || "-"}</span>
+                </div>
               </div>
 
               {(selectedReceipt.createdBy || selectedReceipt.approvedBy || selectedReceipt.approvedAt) && (

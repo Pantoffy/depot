@@ -9,6 +9,7 @@ import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
 import { FormTextarea } from "../../components/form";
 import { warehouseService, Warehouse } from "../../services/warehouseService";
+import { downloadExcelFromApi } from "../../services/excelExportService";
 
 const WAREHOUSE_TYPE_OPTIONS = [
   { value: 1, label: "Vật tư", description: "Kho vật tư - Tiêu hao (Nguyên liệu, gia vị, bao bì, đồ gia dụng)" },
@@ -69,8 +70,9 @@ export default function QuanLyKho() {
   const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(null);
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [filters, setFilters] = useState<{ status: string[] }>({
+  const [filters, setFilters] = useState<{ status: string[]; typeId: number[] }>({
     status: [],
+    typeId: [],
   });
   const [formData, setFormData] = useState({
     code: "",
@@ -276,8 +278,10 @@ export default function QuanLyKho() {
     
     // Apply status filter
     const matchesStatus = filters.status.length === 0 || (warehouse.status && filters.status.includes(warehouse.status));
-    
-    return matchesSearch && matchesStatus;
+    // Apply type filter
+    const matchesType = filters.typeId.length === 0 || filters.typeId.includes(Number(warehouse.typeId));
+
+    return matchesSearch && matchesStatus && matchesType;
   });
 
   const totalPages = Math.ceil(filteredWarehouses.length / itemsPerPage);
@@ -295,7 +299,13 @@ export default function QuanLyKho() {
     return date.toLocaleDateString('vi-VN', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
-  const pageTitle = view === "list" ? "Quản lý kho" : view === "create" ? "Thêm kho mới" : "Chỉnh sửa kho";
+  const pageTitle = view === "list"
+    ? "Quản lý kho"
+    : view === "create"
+      ? "Thêm kho mới"
+      : view === "detail"
+        ? "Chi tiết kho"
+        : "Chỉnh sửa kho";
   const breadcrumbAction = view === "list" ? (
     <button
       onClick={() => {
@@ -364,23 +374,18 @@ export default function QuanLyKho() {
               </div>
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => {}}
+                  onClick={async () => {
+                    try {
+                      await downloadExcelFromApi("/api/ExcelExport/warehouses", `kho-hang_${new Date().toISOString().slice(0, 10)}.xlsx`);
+                      showToast("Đã xuất danh sách kho hàng!", "success");
+                    } catch (e: any) {
+                      showToast(e.message || "Lỗi khi xuất Excel", "error");
+                    }
+                  }}
                   className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 shadow-sm transition-colors"
                 >
                   <Download className="w-4 h-4" />
-                  Export
-                </button>
-                <button
-                  onClick={() => {
-                    resetForm();
-                    setView("create");
-                  }}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-cyan-600 rounded-xl hover:bg-cyan-700 shadow-lg shadow-cyan-600/20 transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                  </svg>
-                  Thêm Kho
+                  Xuất Excel
                 </button>
               </div>
             </div>
@@ -401,58 +406,97 @@ export default function QuanLyKho() {
               </div>
               
               <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setIsFilterOpen(!isFilterOpen)}
-                  className="inline-flex h-[48px] items-center gap-2 px-4 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 shadow-sm transition-colors"
-                >
-                  <SlidersHorizontal className="w-4 h-4" />
-                  Bộ lọc
-                </button>
+                {(() => {
+                  const activeCount = filters.status.length + filters.typeId.length;
+                  const toggleStr = (arr: string[], val: string): string[] =>
+                    arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val];
+                  const toggleNum = (arr: number[], val: number): number[] =>
+                    arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val];
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setIsFilterOpen(!isFilterOpen)}
+                        className={`relative inline-flex h-[48px] items-center gap-2 px-4 text-sm font-medium border rounded-xl shadow-sm transition-colors ${
+                          activeCount > 0
+                            ? "bg-cyan-50 border-cyan-300 text-cyan-700 dark:bg-cyan-900/20 dark:border-cyan-700 dark:text-cyan-300"
+                            : "text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+                        }`}
+                      >
+                        <SlidersHorizontal className="w-4 h-4" />
+                        Bộ lọc
+                        {activeCount > 0 && (
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-600 text-[10px] font-bold text-white">
+                            {activeCount}
+                          </span>
+                        )}
+                      </button>
 
-                {isFilterOpen && (
-                  <>
-                    <div 
-                      className="fixed inset-0 z-40" 
-                      onClick={() => setIsFilterOpen(false)}
-                    />
-                    <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl z-50 p-4">
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            Trạng Thái
-                          </label>
-                          <div className="space-y-1">
-                            {["Hoạt động", "Ngừng hoạt động", "Bảo trì"].map(status => (
-                              <label key={status} className="flex items-center gap-2 p-1 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={filters.status.includes(status)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setFilters({ ...filters, status: [...filters.status, status] });
-                                    } else {
-                                      setFilters({ ...filters, status: filters.status.filter(s => s !== status) });
-                                    }
-                                  }}
-                                  className="rounded"
-                                />
-                                <span className="text-sm text-gray-700 dark:text-gray-300">{status}</span>
-                              </label>
-                            ))}
+                      {isFilterOpen && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setIsFilterOpen(false)} />
+                          <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                            <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-4 py-3">
+                              <span className="text-sm font-semibold text-gray-800 dark:text-white">Bộ lọc</span>
+                              {activeCount > 0 && (
+                                <button
+                                  onClick={() => setFilters({ status: [], typeId: [] })}
+                                  className="text-xs font-medium text-rose-500 hover:text-rose-600 transition-colors"
+                                >
+                                  Xóa tất cả
+                                </button>
+                              )}
+                            </div>
+                            <div className="max-h-[380px] overflow-y-auto p-4 space-y-5">
+                              <div>
+                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Trạng thái</p>
+                                <div className="space-y-1">
+                                  {[
+                                    { label: "Hoạt động", dot: "bg-emerald-500" },
+                                    { label: "Ngừng hoạt động", dot: "bg-gray-400" },
+                                    { label: "Bảo trì", dot: "bg-amber-400" },
+                                  ].map(({ label, dot }) => (
+                                    <label key={label} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={filters.status.includes(label)}
+                                        onChange={() => setFilters((p) => ({ ...p, status: toggleStr(p.status, label) }))}
+                                        className="rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+                                      />
+                                      <span className={`h-2 w-2 rounded-full ${dot}`} />
+                                      <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                              <div>
+                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Loại kho</p>
+                                <div className="space-y-1">
+                                  {[
+                                    { value: 1, label: "Vật tư", dot: "bg-sky-400" },
+                                    { value: 2, label: "Hàng hóa", dot: "bg-violet-400" },
+                                    { value: 3, label: "Tài sản", dot: "bg-orange-400" },
+                                  ].map(({ value, label, dot }) => (
+                                    <label key={value} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={filters.typeId.includes(value)}
+                                        onChange={() => setFilters((p) => ({ ...p, typeId: toggleNum(p.typeId, value) }))}
+                                        className="rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+                                      />
+                                      <span className={`h-2 w-2 rounded-full ${dot}`} />
+                                      <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-
-                        <button
-                          onClick={() => setIsFilterOpen(false)}
-                          className="w-full px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                          Apply
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -724,6 +768,7 @@ export default function QuanLyKho() {
                   />
                 </div>
 
+                {view === "edit" && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Trạng Thái
@@ -739,6 +784,7 @@ export default function QuanLyKho() {
                     <option>Bảo trì</option>
                   </select>
                 </div>
+                )}
 
                 <div className="md:col-span-2">
                   <FormTextarea

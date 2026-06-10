@@ -12,6 +12,7 @@ import { inventoryService } from "../../services/inventoryService";
 import { materialService } from "../../services/materialService";
 import { unitService } from "../../services/unitService";
 import { warehouseService, Warehouse } from "../../services/warehouseService";
+import { resolveMaterialItemType } from "../../services/itemTypeService";
 
 // Dropdown Action Component
 const ActionDropdown = ({ 
@@ -45,6 +46,7 @@ interface StockItem {
   quantity: number;
   unitName: string;
   categoryName: string;
+  itemType: string;
   updatedDate?: string;
   lastImportDate?: string;
   lastExportDate?: string;
@@ -203,6 +205,7 @@ export default function StockByWarehouse() {
           quantity: inv.quantity,
           unitName: resolvedUnitName,
           categoryName: material?.categoryName || "N/A",
+          itemType: material ? resolveMaterialItemType(material as any) : "material",
           updatedDate: inv.updatedDate,
           lastImportDate: movement?.lastImportDate,
           lastExportDate: movement?.lastExportDate,
@@ -262,8 +265,8 @@ export default function StockByWarehouse() {
   const summaryStats = useMemo(() => {
     const totalQuantity = stockItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
     const warehouseCount = new Set(stockItems.map((item) => item.warehouseId)).size;
-    const lowStockCount = stockItems.filter((item) => item.quantity > 0 && item.quantity <= 10).length;
-    const outOfStockCount = stockItems.filter((item) => item.quantity <= 0).length;
+    const lowStockCount = stockItems.filter((item) => item.itemType !== "asset" && item.quantity > 0 && item.quantity <= 10).length;
+    const outOfStockCount = stockItems.filter((item) => item.itemType !== "asset" && item.quantity <= 0).length;
     const totalExportCount = stockItems.reduce((sum, item) => sum + Number(item.exportCount || 0), 0);
 
     return {
@@ -287,7 +290,12 @@ export default function StockByWarehouse() {
     });
   };
 
-  const getStockBadgeClass = (quantity: number) => {
+  const getStockBadgeClass = (quantity: number, itemType?: string) => {
+    if (itemType === "asset") {
+      return quantity > 0
+        ? "bg-violet-50 text-violet-700 shadow-[0_0_0_1px_rgba(139,92,246,0.2)] dark:bg-violet-900/20 dark:text-violet-300"
+        : "bg-gray-100 text-gray-500 shadow-[0_0_0_1px_rgba(156,163,175,0.2)] dark:bg-gray-800 dark:text-gray-400";
+    }
     if (quantity <= 0) {
       return "bg-rose-50 text-rose-700 shadow-[0_0_0_1px_rgba(225,29,72,0.2)] dark:bg-rose-900/20 dark:text-rose-300";
     }
@@ -299,7 +307,8 @@ export default function StockByWarehouse() {
     return "bg-emerald-50 text-emerald-700 shadow-[0_0_0_1px_rgba(16,185,129,0.2)] dark:bg-emerald-900/20 dark:text-emerald-300";
   };
 
-  const getStockLabel = (quantity: number) => {
+  const getStockLabel = (quantity: number, itemType?: string) => {
+    if (itemType === "asset") return quantity > 0 ? "Khả dụng" : "Không có";
     if (quantity <= 0) return "Hết hàng";
     if (quantity <= 10) return "Sắp hết";
     return "Ổn định";
@@ -353,13 +362,6 @@ export default function StockByWarehouse() {
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Danh sách tồn kho theo kho</h2>
                   <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Theo dõi số lượng vật tư tại từng kho theo thời gian cập nhật mới nhất.</p>
                 </div>
-                <button
-                  onClick={fetchData}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200 shadow-sm"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  Làm mới
-                </button>
               </div>
             </div>
 
@@ -436,8 +438,8 @@ export default function StockByWarehouse() {
                         </td>
                         <td className="px-6 py-4 font-semibold text-gray-900 dark:text-gray-100">{item.quantity.toLocaleString("vi-VN")}</td>
                         <td className="px-6 py-4">
-                          <span className={`status-pill ${getStockBadgeClass(item.quantity)}`}>
-                            {getStockLabel(item.quantity)}
+                          <span className={`status-pill ${getStockBadgeClass(item.quantity, item.itemType)}`}>
+                            {getStockLabel(item.quantity, item.itemType)}
                           </span>
                         </td>
                         <td className="whitespace-nowrap px-6 py-4 text-gray-600 dark:text-gray-400">{formatDateTime(item.lastImportDate)}</td>

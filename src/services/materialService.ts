@@ -1,6 +1,6 @@
 import axios from "axios";
 import { createApiClient } from "./apiClient";
-import type { ItemType } from "./itemTypeService";
+import { type ItemType, setStoredItemType, resolveMaterialItemType } from "./itemTypeService";
 
 // Interface matching C# Material model
 export interface Material {
@@ -31,7 +31,12 @@ export const materialService = {
   getAllMaterials: async (): Promise<Material[]> => {
     try {
       const response = await apiClient.get<Material[]>("/List");
-      return response.data;
+      const materials = response.data;
+      // Hydrate localStorage so notification dropdown can resolve item types anywhere
+      materials.forEach((m) => {
+        if (m.id) setStoredItemType(m.id, resolveMaterialItemType(m));
+      });
+      return materials;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         if (error.response) {
@@ -91,6 +96,8 @@ export const materialService = {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         console.error("Error deleting material:", error.message);
+        const message = error.response?.data || error.message;
+        throw new Error(typeof message === "string" ? message : JSON.stringify(message));
       }
       throw error;
     }

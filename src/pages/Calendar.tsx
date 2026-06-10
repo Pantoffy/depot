@@ -84,7 +84,7 @@ const statusBadgeClass = (status?: string) => {
   if (s === "đã duyệt" || s === "approved" || s === "đã xác nhận" || s === "confirmed") {
     return "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-500/20 dark:text-emerald-300 dark:ring-emerald-400/30";
   }
-  if (s === "đã giao" || s === "đã giao hàng" || s === "delivered") {
+  if (s === "đã giao" || s === "đã nhận hàng" || s === "delivered") {
     return "bg-blue-100 text-blue-700 ring-1 ring-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:ring-blue-400/30";
   }
   if (s === "chờ xác nhận" || s === "đã trình" || s === "pending") {
@@ -103,7 +103,7 @@ const statusLabel = (status?: string) => {
   const s = (status || "").toLowerCase().trim();
   if (s === "đã duyệt" || s === "approved" || s === "confirmed") return "Đã duyệt";
   if (s === "đã xác nhận") return "Đã xác nhận";
-  if (s === "đã giao hàng") return "Đã giao hàng";
+  if (s === "đã nhận hàng") return "Đã nhận hàng";
   if (s === "đã giao" || s === "delivered") return "Đã giao";
   if (s === "chờ xác nhận") return "Chờ xác nhận";
   if (s === "đã trình" || s === "pending") return "Đã trình";

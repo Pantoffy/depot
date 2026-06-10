@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, SlidersHorizontal, Eye, Pencil, Trash2, Download } from "lucide-react";
+import { Search, SlidersHorizontal, Eye, Pencil, Trash2, Download, ArrowLeftRight } from "lucide-react";
 import { useState, useEffect } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
@@ -9,6 +9,7 @@ import { showToast } from "../../components/common/Toast";
 import { showConfirm } from "../../components/common/ConfirmDialog";
 import { supplierService, Supplier } from "../../services/supplierService";
 import { useAuth } from "../../context/AuthContext";
+import { downloadExcelFromApi } from "../../services/excelExportService";
 
 // Component: Dropdown hành động (View/Edit/Delete nhà cung cấp)
 const ActionDropdown = ({ 
@@ -57,8 +58,9 @@ export default function Suppliers() {
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [filters, setFilters] = useState<{ status: string[] }>({
+  const [filters, setFilters] = useState<{ status: string[]; type: string[] }>({
     status: [],
+    type: [],
   });
   const [formData, setFormData] = useState({
     code: "",
@@ -239,7 +241,7 @@ export default function Suppliers() {
             setSelectedSupplier(updatedSupplier);
           }
           // Reset filters to show the updated supplier
-          setFilters({ status: [] });
+          setFilters({ status: [], type: [] });
           showToast(`Trạng thái đã được cập nhật thành "${newStatus}"!`, "success");
         } catch (error: any) {
           console.error("Toggle status error:", error);
@@ -291,8 +293,11 @@ export default function Suppliers() {
     
     // Apply status filter
     const matchesStatus = filters.status.length === 0 || filters.status.includes(supplier.status);
-    
-    return matchesSearch && matchesStatus;
+
+    // Apply type filter
+    const matchesType = filters.type.length === 0 || filters.type.includes(supplier.type);
+
+    return matchesSearch && matchesStatus && matchesType;
   });
 
   const totalPages = Math.ceil(filteredSuppliers.length / itemsPerPage);
@@ -310,7 +315,13 @@ export default function Suppliers() {
     return date.toLocaleDateString('vi-VN', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
-  const pageTitle = view === "list" ? "Quản lý nhà cung cấp" : view === "create" ? "Thêm Nhà Cung Cấp Mới" : "Chỉnh Sửa Nhà Cung Cấp";
+  const pageTitle = view === "list"
+    ? "Quản lý nhà cung cấp"
+    : view === "create"
+      ? "Thêm Nhà Cung Cấp Mới"
+      : view === "detail"
+        ? "Chi Tiết Nhà Cung Cấp"
+        : "Chỉnh Sửa Nhà Cung Cấp";
   const breadcrumbAction = view === "list" ? (
     <button
       onClick={() => {
@@ -379,23 +390,18 @@ export default function Suppliers() {
               </div>
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => {}}
+                  onClick={async () => {
+                    try {
+                      await downloadExcelFromApi("/api/ExcelExport/suppliers", `nha-cung-cap_${new Date().toISOString().slice(0, 10)}.xlsx`);
+                      showToast("Đã xuất danh sách nhà cung cấp!", "success");
+                    } catch (e: any) {
+                      showToast(e.message || "Lỗi khi xuất Excel", "error");
+                    }
+                  }}
                   className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 shadow-sm transition-colors"
                 >
                   <Download className="w-4 h-4" />
-                  Export
-                </button>
-                <button
-                  onClick={() => {
-                    resetForm();
-                    setView("create");
-                  }}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-cyan-600 rounded-xl hover:bg-cyan-700 shadow-lg shadow-cyan-600/20 transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                  </svg>
-                  Thêm nhà cung cấp
+                  Xuất Excel
                 </button>
               </div>
             </div>
@@ -416,58 +422,93 @@ export default function Suppliers() {
               </div>
               
               <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setIsFilterOpen(!isFilterOpen)}
-                  className="inline-flex h-[48px] items-center gap-2 px-4 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 shadow-sm transition-colors"
-                >
-                  <SlidersHorizontal className="w-4 h-4" />
-                  Bộ lọc
-                </button>
+                {(() => {
+                  const activeCount = filters.status.length + filters.type.length;
+                  const toggle = <T,>(arr: T[], val: T): T[] =>
+                    arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val];
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setIsFilterOpen(!isFilterOpen)}
+                        className={`relative inline-flex h-[48px] items-center gap-2 px-4 text-sm font-medium border rounded-xl shadow-sm transition-colors ${
+                          activeCount > 0
+                            ? "bg-cyan-50 border-cyan-300 text-cyan-700 dark:bg-cyan-900/20 dark:border-cyan-700 dark:text-cyan-300"
+                            : "text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+                        }`}
+                      >
+                        <SlidersHorizontal className="w-4 h-4" />
+                        Bộ lọc
+                        {activeCount > 0 && (
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-600 text-[10px] font-bold text-white">
+                            {activeCount}
+                          </span>
+                        )}
+                      </button>
 
-                {isFilterOpen && (
-                  <>
-                    <div 
-                      className="fixed inset-0 z-40" 
-                      onClick={() => setIsFilterOpen(false)}
-                    />
-                    <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl z-50 p-4">
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            Trạng Thái
-                          </label>
-                          <div className="space-y-1">
-                            {["Hoạt động", "Ngừng hợp tác"].map(status => (
-                              <label key={status} className="flex items-center gap-2 p-1 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={filters.status.includes(status)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setFilters({ ...filters, status: [...filters.status, status] });
-                                    } else {
-                                      setFilters({ ...filters, status: filters.status.filter((s: string) => s !== status) });
-                                    }
-                                  }}
-                                  className="rounded"
-                                />
-                                <span className="text-sm text-gray-700 dark:text-gray-300">{status}</span>
-                              </label>
-                            ))}
+                      {isFilterOpen && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setIsFilterOpen(false)} />
+                          <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                            <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-4 py-3">
+                              <span className="text-sm font-semibold text-gray-800 dark:text-white">Bộ lọc</span>
+                              {activeCount > 0 && (
+                                <button
+                                  onClick={() => setFilters({ status: [], type: [] })}
+                                  className="text-xs font-medium text-rose-500 hover:text-rose-600 transition-colors"
+                                >
+                                  Xóa tất cả
+                                </button>
+                              )}
+                            </div>
+                            <div className="max-h-[380px] overflow-y-auto p-4 space-y-5">
+                              <div>
+                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Trạng thái</p>
+                                <div className="space-y-1">
+                                  {[
+                                    { label: "Hoạt động", dot: "bg-emerald-500" },
+                                    { label: "Ngừng hợp tác", dot: "bg-rose-400" },
+                                  ].map(({ label, dot }) => (
+                                    <label key={label} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={filters.status.includes(label)}
+                                        onChange={() => setFilters((p) => ({ ...p, status: toggle(p.status, label) }))}
+                                        className="rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+                                      />
+                                      <span className={`h-2 w-2 rounded-full ${dot}`} />
+                                      <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                              <div>
+                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Loại NCC</p>
+                                <div className="space-y-1">
+                                  {[
+                                    { label: "Cá nhân", dot: "bg-sky-400" },
+                                    { label: "Doanh nghiệp", dot: "bg-violet-400" },
+                                  ].map(({ label, dot }) => (
+                                    <label key={label} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={filters.type.includes(label)}
+                                        onChange={() => setFilters((p) => ({ ...p, type: toggle(p.type, label) }))}
+                                        className="rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+                                      />
+                                      <span className={`h-2 w-2 rounded-full ${dot}`} />
+                                      <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-
-                        <button
-                          onClick={() => setIsFilterOpen(false)}
-                          className="w-full px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                          Apply
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -836,12 +877,14 @@ export default function Suppliers() {
                   {canApprove() && (
                     <button
                       onClick={() => handleToggleStatus(selectedSupplier)}
-                      className="rounded-lg p-2 text-emerald-600 transition-colors hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-500/20"
-                      title="Đổi trạng thái"
+                      className={`rounded-lg p-2 transition-colors ${
+                        selectedSupplier.status === "Hoạt động"
+                          ? "text-rose-600 hover:bg-rose-100 dark:text-rose-400 dark:hover:bg-rose-500/20"
+                          : "text-emerald-600 hover:bg-emerald-100 dark:text-emerald-400 dark:hover:bg-emerald-500/20"
+                      }`}
+                      title={selectedSupplier.status === "Hoạt động" ? "Ngưng hợp tác" : "Kích hoạt"}
                     >
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
+                      <ArrowLeftRight className="h-4 w-4" />
                     </button>
                   )}
                   <button

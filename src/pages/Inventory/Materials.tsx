@@ -19,6 +19,7 @@ import {
 import { buildInventoryQuantityMap, inventoryService, InventoryItem } from "../../services/inventoryService";
 import { supplierService, Supplier } from "../../services/supplierService";
 import { useAuth } from "../../context/AuthContext";
+import { downloadExcelFromApi } from "../../services/excelExportService";
 
 // Dropdown Action Component
 const ActionDropdown = ({ 
@@ -83,8 +84,17 @@ export default function Materials() {
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [filters, setFilters] = useState<{ status: string[] }>({
+  const [activeTypeTab, setActiveTypeTab] = useState<"all" | ItemType>("all");
+  const [filters, setFilters] = useState<{
+    status: string[];
+    itemType: ItemType[];
+    stockLevel: string[];
+    categoryId: number[];
+  }>({
     status: [],
+    itemType: [],
+    stockLevel: [],
+    categoryId: [],
   });
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 7;
@@ -379,6 +389,11 @@ export default function Materials() {
   // Delete material
   const handleDeleteMaterial = (id: number | undefined) => {
     if (!id) return;
+    const stockQty = inventoryQuantityByMaterial[id] || 0;
+    if (stockQty > 0) {
+      showToast(`Không thể xóa: vật tư đang có ${stockQty} đơn vị trong kho. Vui lòng xuất hết hàng trước khi xóa.`, "error");
+      return;
+    }
     showConfirm({
       message: "Bạn có chắc chắn muốn xóa nguyên liệu này?",
       okText: "Xóa",
@@ -443,22 +458,49 @@ export default function Materials() {
 
   // Filter and paginate materials
   const filteredMaterials = materials.filter((material) => {
-    const searchMatch = searchTerm.toLowerCase() === ""
-      ? true
-      : material.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        material.name.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const statusMatch = filters.status.length === 0 || filters.status.includes(normalizeStatus(material.status));
-    return searchMatch && statusMatch;
+    const q = searchTerm.toLowerCase();
+    const searchMatch =
+      q === "" ||
+      material.code.toLowerCase().includes(q) ||
+      material.name.toLowerCase().includes(q) ||
+      (material.categoryName || "").toLowerCase().includes(q);
+
+    const statusMatch =
+      filters.status.length === 0 ||
+      filters.status.includes(normalizeStatus(material.status));
+
+    const itemTypeMatch =
+      filters.itemType.length === 0 ||
+      filters.itemType.includes(resolveMaterialItemType(material));
+
+    const stock = Number(inventoryQuantityByMaterial[material.id ?? 0] || 0);
+    const stockMatch =
+      filters.stockLevel.length === 0 ||
+      (filters.stockLevel.includes("out_of_stock") && stock <= 0) ||
+      (filters.stockLevel.includes("low_stock") && stock > 0 && stock <= 10) ||
+      (filters.stockLevel.includes("in_stock") && stock > 10);
+
+    const categoryMatch =
+      filters.categoryId.length === 0 ||
+      filters.categoryId.includes(material.categoryId);
+
+    return searchMatch && statusMatch && itemTypeMatch && stockMatch && categoryMatch;
   });
 
-  const totalPages = Math.ceil(filteredMaterials.length / itemsPerPage);
+  const filteredByTab = activeTypeTab === "all"
+    ? filteredMaterials
+    : filteredMaterials.filter((m) => resolveMaterialItemType(m) === activeTypeTab);
+
+  const totalPages = Math.ceil(filteredByTab.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedMaterials = filteredMaterials.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedMaterials = filteredByTab.slice(startIndex, startIndex + itemsPerPage);
+
+  const countByType = (type: ItemType) => materials.filter((m) => resolveMaterialItemType(m) === type).length;
   const summaryStats = {
     totalMaterials: materials.length,
-    activeMaterials: materials.filter((m) => isActiveStatus(m.status)).length,
-    inactiveMaterials: materials.filter((m) => !isActiveStatus(m.status)).length,
+    materialCount: countByType("material"),
+    goodsCount:    countByType("goods"),
+    assetCount:    countByType("asset"),
     totalStock: Object.values(inventoryQuantityByMaterial).reduce<number>((sum, quantity) => sum + Number(quantity || 0), 0),
   };
 
@@ -499,49 +541,22 @@ export default function Materials() {
   };
 
   // Xuất danh sách nguyên liệu ra file Excel (CSV)
-  const exportToExcel = () => {
-    const dataToExport = filteredMaterials.length > 0 ? filteredMaterials : materials;
-    if (dataToExport.length === 0) {
-      showToast("Không có dữ liệu để xuất!", "error");
-      return;
+  const exportToExcel = async () => {
+    try {
+      await downloadExcelFromApi("/api/ExcelExport/materials", `vat-tu_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      showToast("Đã xuất danh sách vật tư ra file Excel!", "success");
+    } catch (error: any) {
+      showToast(error.message || "Lỗi khi xuất Excel", "error");
     }
-
-    const headers = ["STT", "Mã", "Tên", "Loại", "Danh Mục", "Đơn Vị", "Kho", "Tồn Kho", "Trạng Thái", "Ghi Chú", "Ngày Tạo"];
-
-    const escapeCSV = (value: string) => {
-      if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-        return `"${value.replace(/"/g, '""')}"`;
-      }
-      return value;
-    };
-
-    const rows = dataToExport.map((m, index) => [
-      index + 1,
-      escapeCSV(m.code || ""),
-      escapeCSV(m.name || ""),
-      escapeCSV(getItemTypeLabel(m)),
-      escapeCSV(m.categoryName || ""),
-      escapeCSV(getUnitName(m)),
-      escapeCSV(getWarehouseNames(m.id)),
-      getMaterialStockQuantity(m.id),
-      escapeCSV(m.status || ""),
-      escapeCSV(m.note || ""),
-      formatDate(m.createdTime),
-    ].join(","));
-
-    const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    const today = new Date().toISOString().slice(0, 10);
-    link.href = url;
-    link.download = `nguyen-lieu_${today}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-    showToast(`Đã xuất ${dataToExport.length} nguyên liệu ra file Excel!`, "success");
   };
 
-  const pageTitle = view === "list" ? "Quản lý vật tư và tài sản" : view === "create" ? "Thêm Vật Tư Mới" : "Chỉnh Sửa Vật Tư";
+  const pageTitle = view === "list"
+    ? "Quản lý vật tư và tài sản"
+    : view === "create"
+      ? "Thêm Vật Tư Mới"
+      : view === "detail"
+        ? "Chi Tiết Vật Tư"
+        : "Chỉnh Sửa Vật Tư";
   const breadcrumbAction = view === "list" ? (
     <button
       onClick={() => {
@@ -577,22 +592,47 @@ export default function Materials() {
 
       {view === "list" && (
         <>
-        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4 dark:border-sky-500/30 dark:from-sky-500/10 dark:to-gray-900">
-            <p className="text-xs font-medium text-sky-700 dark:text-sky-300">Tổng vật tư</p>
-            <p className="mt-2 text-2xl font-semibold text-sky-900 dark:text-sky-200">{summaryStats.totalMaterials}</p>
-          </div>
-          <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 dark:border-emerald-500/30 dark:from-emerald-500/10 dark:to-gray-900">
-            <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Đang hoạt động</p>
-            <p className="mt-2 text-2xl font-semibold text-emerald-900 dark:text-emerald-200">{summaryStats.activeMaterials}</p>
-          </div>
-          <div className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-white p-4 dark:border-rose-500/30 dark:from-rose-500/10 dark:to-gray-900">
-            <p className="text-xs font-medium text-rose-700 dark:text-rose-300">Ngừng hoạt động</p>
-            <p className="mt-2 text-2xl font-semibold text-rose-900 dark:text-rose-200">{summaryStats.inactiveMaterials}</p>
-          </div>
+        <div className="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <button
+            onClick={() => { setActiveTypeTab("material"); setCurrentPage(1); }}
+            className={`rounded-2xl border p-4 text-left transition-all ${
+              activeTypeTab === "material"
+                ? "border-sky-400 bg-sky-50 shadow-md dark:border-sky-500 dark:bg-sky-500/15"
+                : "border-sky-200 bg-gradient-to-br from-sky-50 to-white hover:shadow-sm dark:border-sky-500/30 dark:from-sky-500/10 dark:to-gray-900"
+            }`}
+          >
+            <p className="text-xs font-medium text-sky-700 dark:text-sky-300">Nguyên liệu</p>
+            <p className="mt-2 text-2xl font-semibold text-sky-900 dark:text-sky-200">{summaryStats.materialCount}</p>
+            <p className="mt-0.5 text-[11px] text-sky-500 dark:text-sky-400">loại</p>
+          </button>
+          <button
+            onClick={() => { setActiveTypeTab("goods"); setCurrentPage(1); }}
+            className={`rounded-2xl border p-4 text-left transition-all ${
+              activeTypeTab === "goods"
+                ? "border-teal-400 bg-teal-50 shadow-md dark:border-teal-500 dark:bg-teal-500/15"
+                : "border-teal-200 bg-gradient-to-br from-teal-50 to-white hover:shadow-sm dark:border-teal-500/30 dark:from-teal-500/10 dark:to-gray-900"
+            }`}
+          >
+            <p className="text-xs font-medium text-teal-700 dark:text-teal-300">Hàng hóa</p>
+            <p className="mt-2 text-2xl font-semibold text-teal-900 dark:text-teal-200">{summaryStats.goodsCount}</p>
+            <p className="mt-0.5 text-[11px] text-teal-500 dark:text-teal-400">loại</p>
+          </button>
+          <button
+            onClick={() => { setActiveTypeTab("asset"); setCurrentPage(1); }}
+            className={`rounded-2xl border p-4 text-left transition-all ${
+              activeTypeTab === "asset"
+                ? "border-violet-400 bg-violet-50 shadow-md dark:border-violet-500 dark:bg-violet-500/15"
+                : "border-violet-200 bg-gradient-to-br from-violet-50 to-white hover:shadow-sm dark:border-violet-500/30 dark:from-violet-500/10 dark:to-gray-900"
+            }`}
+          >
+            <p className="text-xs font-medium text-violet-700 dark:text-violet-300">Tài sản</p>
+            <p className="mt-2 text-2xl font-semibold text-violet-900 dark:text-violet-200">{summaryStats.assetCount}</p>
+            <p className="mt-0.5 text-[11px] text-violet-500 dark:text-violet-400">loại</p>
+          </button>
           <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-4 dark:border-indigo-500/30 dark:from-indigo-500/10 dark:to-gray-900">
             <p className="text-xs font-medium text-indigo-700 dark:text-indigo-300">Tổng tồn kho</p>
             <p className="mt-2 text-2xl font-semibold text-indigo-900 dark:text-indigo-200">{summaryStats.totalStock.toLocaleString("vi-VN")}</p>
+            <p className="mt-0.5 text-[11px] text-indigo-500 dark:text-indigo-400">đơn vị</p>
           </div>
         </div>
 
@@ -620,6 +660,36 @@ export default function Materials() {
             </div>
           </div>
 
+          {/* Tab bar */}
+          <div className="flex items-center gap-1 border-b border-gray-200 px-5 dark:border-gray-800">
+            {([
+              { key: "all",      label: "Tất cả",      count: summaryStats.totalMaterials, activeClass: "border-gray-700 text-gray-900 dark:border-white dark:text-white" },
+              { key: "material", label: "Nguyên liệu", count: summaryStats.materialCount,   activeClass: "border-sky-500 text-sky-600 dark:text-sky-400" },
+              { key: "goods",    label: "Hàng hóa",    count: summaryStats.goodsCount,      activeClass: "border-teal-500 text-teal-600 dark:text-teal-400" },
+              { key: "asset",    label: "Tài sản",     count: summaryStats.assetCount,      activeClass: "border-violet-500 text-violet-600 dark:text-violet-400" },
+            ] as const).map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => { setActiveTypeTab(tab.key); setCurrentPage(1); }}
+                className={`relative flex items-center gap-2 border-b-2 px-4 py-3.5 text-sm font-medium transition-colors ${
+                  activeTypeTab === tab.key
+                    ? tab.activeClass
+                    : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                }`}
+              >
+                {tab.label}
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                  activeTypeTab === tab.key
+                    ? tab.key === "material" ? "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
+                    : tab.key === "goods"    ? "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300"
+                    : tab.key === "asset"    ? "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
+                    : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+                    : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+                }`}>{tab.count}</span>
+              </button>
+            ))}
+          </div>
+
           {/* Search and Filter Section */}
           <div className="p-5 lg:p-6 border-b border-gray-200 dark:border-gray-800 overflow-visible">
             <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
@@ -636,66 +706,149 @@ export default function Materials() {
                   className="h-[48px] w-full pl-10 pr-4 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent shadow-sm"
                 />
               </div>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setIsFilterOpen(!isFilterOpen)}
-                  className="inline-flex h-[48px] items-center gap-2 px-4 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 shadow-sm transition-colors"
-                >
-                  <SlidersHorizontal className="w-4 h-4" />
-                  Bộ lọc
-                </button>
+                <div className="relative">
+                  {/* Filter button with active-count badge */}
+                  {(() => {
+                    const activeCount =
+                      filters.status.length +
+                      filters.stockLevel.length +
+                      filters.categoryId.length;
 
-                {isFilterOpen && (
-                  <>
-                    <div 
-                      className="fixed inset-0 z-40" 
-                      onClick={() => setIsFilterOpen(false)}
-                    />
-                    <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl z-50 p-4">
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            Trạng Thái
-                          </label>
-                          <div className="space-y-1">
-                            {["Đang hoạt động", "Ngừng hoạt động"].map((status) => (
-                              <label key={status} className="flex items-center gap-2 p-1 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={filters.status.includes(status)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setFilters(prev => ({
-                                        ...prev,
-                                        status: [...prev.status, status]
-                                      }));
-                                    } else {
-                                      setFilters(prev => ({
-                                        ...prev,
-                                        status: prev.status.filter(s => s !== status)
-                                      }));
-                                    }
-                                  }}
-                                  className="rounded"
-                                />
-                                <span className="text-sm text-gray-700 dark:text-gray-300">{status}</span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
+                    // Categories that actually appear in the loaded materials
+                    const usedCategories = categories.filter((c) =>
+                      materials.some((m) => m.categoryId === c.id),
+                    );
 
+                    const toggle = <T,>(arr: T[], val: T): T[] =>
+                      arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val];
+
+                    return (
+                      <>
                         <button
-                          onClick={() => setIsFilterOpen(false)}
-                          className="w-full px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                          type="button"
+                          onClick={() => setIsFilterOpen(!isFilterOpen)}
+                          className={`relative inline-flex h-[48px] items-center gap-2 px-4 text-sm font-medium border rounded-xl shadow-sm transition-colors ${
+                            activeCount > 0
+                              ? "bg-cyan-50 border-cyan-300 text-cyan-700 dark:bg-cyan-900/20 dark:border-cyan-700 dark:text-cyan-300"
+                              : "text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+                          }`}
                         >
-                          Apply
+                          <SlidersHorizontal className="w-4 h-4" />
+                          Bộ lọc
+                          {activeCount > 0 && (
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-600 text-[10px] font-bold text-white">
+                              {activeCount}
+                            </span>
+                          )}
                         </button>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
+
+                        {isFilterOpen && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-40"
+                              onClick={() => setIsFilterOpen(false)}
+                            />
+                            <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                              {/* Header */}
+                              <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-4 py-3">
+                                <span className="text-sm font-semibold text-gray-800 dark:text-white">Bộ lọc</span>
+                                {activeCount > 0 && (
+                                  <button
+                                    onClick={() => setFilters({ status: [], itemType: [], stockLevel: [], categoryId: [] })} 
+                                    className="text-xs font-medium text-rose-500 hover:text-rose-600 transition-colors"
+                                  >
+                                    Xóa tất cả
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="max-h-[420px] overflow-y-auto p-4 space-y-5">
+                                {/* Trạng thái */}
+                                <div>
+                                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Trạng thái</p>
+                                  <div className="space-y-1">
+                                    {[
+                                      { label: "Đang hoạt động", dot: "bg-emerald-500" },
+                                      { label: "Ngừng hoạt động", dot: "bg-gray-400" },
+                                    ].map(({ label, dot }) => (
+                                      <label key={label} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={filters.status.includes(label)}
+                                          onChange={() => setFilters((p) => ({ ...p, status: toggle(p.status, label) }))}
+                                          className="rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+                                        />
+                                        <span className={`h-2 w-2 rounded-full ${dot}`} />
+                                        <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                {/* Tồn kho */}
+                                <div>
+                                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Tồn kho</p>
+                                  <div className="space-y-1">
+                                    {[
+                                      { value: "in_stock",     label: "Còn hàng",  sub: ">10",  dot: "bg-emerald-500" },
+                                      { value: "low_stock",    label: "Sắp hết",  sub: "1–10", dot: "bg-amber-400" },
+                                      { value: "out_of_stock", label: "Hết hàng", sub: "0",    dot: "bg-rose-500" },
+                                    ].map(({ value, label, sub, dot }) => (
+                                      <label key={value} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={filters.stockLevel.includes(value)}
+                                          onChange={() => setFilters((p) => ({ ...p, stockLevel: toggle(p.stockLevel, value) }))}
+                                          className="rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+                                        />
+                                        <span className={`h-2 w-2 rounded-full ${dot}`} />
+                                        <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
+                                        <span className="ml-auto text-xs text-gray-400">{sub}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                {/* Danh mục */}
+                                {usedCategories.length > 0 && (
+                                  <div>
+                                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Danh mục</p>
+                                    <div className="space-y-1">
+                                      {usedCategories.map((cat) => (
+                                        <label key={cat.id} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+                                          <input
+                                            type="checkbox"
+                                            checked={filters.categoryId.includes(cat.id)}
+                                            onChange={() => setFilters((p) => ({ ...p, categoryId: toggle(p.categoryId, cat.id) }))}
+                                            className="rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+                                          />
+                                          <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{cat.name}</span>
+                                          <span className="ml-auto shrink-0 text-xs text-gray-400">
+                                            {materials.filter((m) => m.categoryId === cat.id).length}
+                                          </span>
+                                        </label>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Footer */}
+                              <div className="border-t border-gray-100 dark:border-gray-800 p-3">
+                                <button
+                                  onClick={() => { setIsFilterOpen(false); setCurrentPage(1); }}
+                                  className="w-full rounded-xl bg-cyan-600 py-2.5 text-sm font-semibold text-white hover:bg-cyan-700 transition-colors"
+                                >
+                                  {activeCount > 0 ? `Áp dụng (${filteredByTab.length} kết quả)` : "Đóng"}
+                                </button>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
             </div>
           </div>
 
@@ -800,7 +953,7 @@ export default function Materials() {
               </table>
 
               {/* Empty State */}
-              {filteredMaterials.length === 0 && (
+              {filteredByTab.length === 0 && (
                 <div className="py-16 text-center">
                   <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
                     <svg className="w-8 h-8 text-gray-400 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -808,22 +961,22 @@ export default function Materials() {
                     </svg>
                   </div>
                   <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-1">
-                    Không tìm thấy nguyên liệu
+                    {activeTypeTab === "asset" ? "Không tìm thấy tài sản" : activeTypeTab === "goods" ? "Không tìm thấy hàng hóa" : "Không tìm thấy nguyên liệu"}
                   </h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Hãy thêm nguyên liệu mới hoặc thay đổi từ khóa tìm kiếm.
+                    Hãy thêm mới hoặc thay đổi từ khóa tìm kiếm.
                   </p>
                 </div>
               )}
 
               {/* Pagination */}
-              {filteredMaterials.length > 0 && (
+              {filteredByTab.length > 0 && (
                 <Pagination
                   currentPage={currentPage}
                   totalPages={totalPages}
-                  totalItems={filteredMaterials.length}
+                  totalItems={filteredByTab.length}
                   startItem={startIndex + 1}
-                  endItem={startIndex + itemsPerPage}
+                  endItem={Math.min(startIndex + itemsPerPage, filteredByTab.length)}
                   onPageChange={setCurrentPage}
                 />
               )}
@@ -1034,6 +1187,7 @@ export default function Materials() {
                   </div>
                 </div>
 
+              {view === "edit" && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Trạng Thái
@@ -1042,13 +1196,14 @@ export default function Materials() {
                   name="status"
                   value={formData.status}
                   onChange={handleFormChange}
-                  disabled={view === "edit" && !canApprove()}
+                  disabled={!canApprove()}
                   className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all duration-200 disabled:bg-gray-100 dark:disabled:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <option>Đang hoạt động</option>
                   <option>Ngừng hoạt động</option>
                 </select>
               </div>
+              )}
 
               <div className="md:col-span-2">
                 <FormTextarea

@@ -3,6 +3,7 @@ import { Dropdown } from "../ui/dropdown/Dropdown";
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router";
 import { notifStorage, type Notification } from "../../services/notificationService";
+import { getStoredItemType } from "../../services/itemTypeService";
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 
@@ -72,6 +73,45 @@ const IconX = ({ className = "w-4 h-4" }: { className?: string }) => (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
   </svg>
 );
+
+// ─── Resolve display text per item type ──────────────────────────────────────
+
+/**
+ * Rewrite LOW_STOCK notification title/message based on stored item type.
+ * key format: "LOW_STOCK_<materialId>" or "LOW_STOCK_<materialId>_CRITICAL"
+ */
+function resolveNotifDisplay(n: Notification): { title: string; message: string } {
+  if (n.type.toUpperCase() !== "LOW_STOCK") return { title: n.title, message: n.message };
+
+  // Extract numeric material ID from the end of the key
+  const segments = n.key.split("_");
+  const numericSeg = [...segments].reverse().find((s: string) => /^\d+$/.test(s));
+  const materialId = Number(numericSeg ?? segments[segments.length - 1]);
+  if (!materialId || !Number.isFinite(materialId)) return { title: n.title, message: n.message };
+
+  const itemType = getStoredItemType(materialId);
+  if (itemType !== "asset") return { title: n.title, message: n.message };
+
+  // Extract item name — backend titles are usually "Hết hàng: <name>" or just "<name>"
+  const colonIdx = n.title.indexOf(":");
+  const itemName = colonIdx >= 0 ? n.title.slice(colonIdx + 1).trim() : n.title.trim();
+
+  // Determine urgency from priority or original title
+  const isOutOfStock =
+    n.priority === "critical" ||
+    n.message.toLowerCase().includes("0") ||
+    n.message.toLowerCase().includes("hết");
+
+  const title = isOutOfStock
+    ? `Tài sản đã hết trong kho: ${itemName}`
+    : `Tài sản không đủ số lượng: ${itemName}`;
+
+  const message = isOutOfStock
+    ? `${itemName} hiện không còn trong kho để cấp phát. Vui lòng kiểm tra tình trạng tài sản.`
+    : `${itemName} hiện không còn đủ số lượng khả dụng trong kho.`;
+
+  return { title, message };
+}
 
 // ─── Tab definitions ──────────────────────────────────────────────────────────
 
@@ -280,6 +320,7 @@ interface NotificationItemProps {
 
 function NotificationItem({ n, isRead, onMarkRead, onDismiss, onNavigate }: NotificationItemProps) {
   const { Icon, bgClass, iconClass, borderClass, tagLabel, tagClass } = getStyle(n.type);
+  const { title, message } = resolveNotifDisplay(n);
   return (
     <li
       onClick={() => { if (n.targetUrl) onNavigate(n.targetUrl); }}
@@ -296,7 +337,7 @@ function NotificationItem({ n, isRead, onMarkRead, onDismiss, onNavigate }: Noti
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <p className={`text-sm font-semibold leading-snug line-clamp-1 ${isRead ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>
-            {n.title}
+            {title}
           </p>
           <span className={`flex-shrink-0 inline-flex group-hover:hidden items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold ${tagClass}`}>
             {tagLabel}
@@ -315,7 +356,7 @@ function NotificationItem({ n, isRead, onMarkRead, onDismiss, onNavigate }: Noti
           </div>
         </div>
         <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">
-          {n.message}
+          {message}
         </p>
         <div className="flex items-center justify-between mt-1.5">
           <span className="text-[11px] text-gray-400 dark:text-gray-500">

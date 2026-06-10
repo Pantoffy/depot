@@ -1,14 +1,16 @@
 "use client";
 
-import { Search, SlidersHorizontal, ArrowUp, ArrowDown } from "lucide-react";
+import { Search, SlidersHorizontal, ArrowUp, ArrowDown, Download } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { useSearchParams, useNavigate } from "react-router";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import CustomSelect from "../../components/common/CustomSelect";
 import Pagination from "../../components/common/Pagination";
 import { showToast } from "../../components/common/Toast";
+import { downloadExcelFromApi } from "../../services/excelExportService";
 import { showConfirm } from "../../components/common/ConfirmDialog";
+import { useAuth } from "../../context/AuthContext";
 import { FormInput, FormDatePicker, FormTextarea } from "../../components/form";
 import { materialService, type Material } from "../../services/materialService";
 import { hydrateMaterialsItemType, resolveMaterialItemType } from "../../services/itemTypeService";
@@ -58,7 +60,7 @@ const STATUS_DRAFT = "Đang soạn thảo";
 const STATUS_PENDING = "Chờ xác nhận";
 const STATUS_CONFIRMED = "Đã xác nhận";
 const STATUS_CANCELLED = "Đã hủy";
-const STATUS_DELIVERED = "Đã giao hàng";
+const STATUS_DELIVERED = "Đã nhận hàng";
 type PurchaseOrderStatusLabel =
   | typeof STATUS_DRAFT
   | typeof STATUS_PENDING
@@ -121,9 +123,9 @@ const normalizeOrderStatus = (status: string): PurchaseOrderStatusLabel => {
     return STATUS_CONFIRMED;
   }
   if (
-    normalized === "đã giao hàng" ||
+    normalized === "đã nhận hàng" ||
     normalized === "delivered" ||
-    normalized === "da giao hang"
+    normalized === "da nhan hang"
   ) {
     return STATUS_DELIVERED;
   }
@@ -206,6 +208,8 @@ const buildUiOrder = (
   };
 };
 
+const PO_DRAFT_KEY = "purchase_order_draft";
+
 export default function PurchaseOrderPage() {
   const [loading, setLoading] = useState(false);
   const [orders, setOrders] = useState<UiOrder[]>([]);
@@ -213,6 +217,8 @@ export default function PurchaseOrderPage() {
   const [availableSuppliers, setAvailableSuppliers] = useState<Supplier[]>([]);
   const [availableUnits, setAvailableUnits] = useState<any[]>([]);
 
+  const navigate = useNavigate();
+  const { canApprove } = useAuth();
   const [view, setView] = useState<PurchaseOrderView>("list");
   const [selectedOrder, setSelectedOrder] = useState<UiOrder | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -273,9 +279,10 @@ export default function PurchaseOrderPage() {
         unitService.getAllUnits(),
       ]);
       const hydratedMaterials = hydrateMaterialsItemType(materialsResponse || []);
-      const poMaterials = hydratedMaterials.filter(
-        (material) => resolveMaterialItemType(material) === "material",
-      );
+      const poMaterials = hydratedMaterials.filter((material) => {
+        const type = resolveMaterialItemType(material);
+        return type === "material" || type === "goods";
+      });
       setAvailableMaterials(poMaterials);
       setAvailableSuppliers(suppliers || []);
       setAvailableUnits(units || []);
@@ -323,7 +330,20 @@ export default function PurchaseOrderPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const generateNextCode = (prefix: string): string => {
+    let maxNumber = 0;
+    for (const order of orders) {
+      const code = order.code || "";
+      if (code.startsWith(prefix) && code.length > prefix.length) {
+        const num = parseInt(code.slice(prefix.length), 10);
+        if (!isNaN(num)) maxNumber = Math.max(maxNumber, num);
+      }
+    }
+    return `${prefix}${String(maxNumber + 1).padStart(3, "0")}`;
+  };
+
   const resetForm = (): void => {
+    localStorage.removeItem(PO_DRAFT_KEY);
     setFormData({
       code: "",
       poNumber: "",
@@ -339,13 +359,48 @@ export default function PurchaseOrderPage() {
     setMaterialSearchTerm("");
   };
 
+  // Auto-save draft to localStorage when filling the create form
+  useEffect(() => {
+    if (view !== "create") return;
+    if (!formData.code && !formData.poNumber && !formData.supplierId && lineItems.length === 0) return;
+    const draft = { formData, lineItems };
+    localStorage.setItem(PO_DRAFT_KEY, JSON.stringify(draft));
+  }, [view, formData, lineItems]);
+
   const openCreateForm = (): void => {
-    resetForm();
+    const nextCode = generateNextCode("PO");
+    const savedDraft = localStorage.getItem(PO_DRAFT_KEY);
+    if (savedDraft) {
+      try {
+        const draft = JSON.parse(savedDraft);
+        setFormData({ ...draft.formData, code: nextCode });
+        setLineItems(draft.lineItems || []);
+        showToast("Đã khôi phục đơn đặt hàng đang soạn dở", "info");
+      } catch {
+        resetForm();
+        setFormData((prev) => ({ ...prev, code: nextCode }));
+      }
+    } else {
+      resetForm();
+      setFormData((prev) => ({ ...prev, code: nextCode }));
+    }
     setSelectedOrder(null);
     setView("create");
   };
 
+  const canEditOrder = (status: string) =>
+    status !== STATUS_CONFIRMED && status !== STATUS_DELIVERED && status !== STATUS_CANCELLED;
+
   const openEditForm = (order: UiOrder): void => {
+    if (!canEditOrder(order.status)) {
+      showToast(
+        order.status === STATUS_CANCELLED
+          ? "Đơn hàng đã hủy không thể chỉnh sửa"
+          : "Đơn hàng đã xác nhận không thể chỉnh sửa",
+        "warning"
+      );
+      return;
+    }
     setSelectedOrder(order);
     setFormData({
       code: order.code,
@@ -439,7 +494,6 @@ export default function PurchaseOrderPage() {
   const handleSaveOrder = async (): Promise<void> => {
     const supplierId = Number(formData.supplierId);
     if (
-      !formData.code ||
       !formData.poNumber ||
       !supplierId ||
       lineItems.length === 0
@@ -449,7 +503,7 @@ export default function PurchaseOrderPage() {
     }
 
     const payload: Omit<PurchaseOrder, "id" | "createdAt"> = {
-      code: formData.code,
+      code: formData.code || "",
       poNumber: formData.poNumber,
       orderDate: formData.orderDate,
       supplierId,
@@ -540,7 +594,14 @@ export default function PurchaseOrderPage() {
     }
   };
 
-  const handleDeleteOrder = (id: number): void => {
+  const handleDeleteOrder = (id: number, status?: string): void => {
+    if (status) {
+      const normalized = normalizeOrderStatus(status);
+      if (normalized === STATUS_CONFIRMED || normalized === STATUS_DELIVERED) {
+        showToast("Không thể xóa đơn hàng đã xác nhận hoặc đã nhận hàng", "error");
+        return;
+      }
+    }
     showConfirm({
       message: "Bạn có chắc chắn muốn xóa đơn hàng này?",
       onConfirm: async () => {
@@ -559,6 +620,10 @@ export default function PurchaseOrderPage() {
   };
 
   const handleConfirmOrder = async (order: UiOrder): Promise<void> => {
+    if (!canApprove()) {
+      showToast("Chỉ Quản lý kho mới có quyền xác nhận đơn hàng", "warning");
+      return;
+    }
     if (normalizeOrderStatus(order.status) !== STATUS_PENDING) {
       showToast("Chỉ phiếu chờ xác nhận mới có thể được xác nhận", "warning");
       return;
@@ -609,8 +674,8 @@ export default function PurchaseOrderPage() {
 
   const handleCancelOrder = async (order: UiOrder): Promise<void> => {
     const currentStatus = normalizeOrderStatus(order.status);
-    if (currentStatus === STATUS_DELIVERED) {
-      showToast("Không thể hủy đơn hàng đã giao", "warning");
+    if (currentStatus !== STATUS_DRAFT) {
+      showToast("Chỉ được hủy đơn hàng đang ở trạng thái Đang soạn thảo", "warning");
       return;
     }
 
@@ -658,12 +723,12 @@ export default function PurchaseOrderPage() {
 
   const handleMarkAsDelivered = async (order: UiOrder): Promise<void> => {
     if (normalizeOrderStatus(order.status) !== STATUS_CONFIRMED) {
-      showToast("Chỉ phiếu đã xác nhận mới có thể đánh dấu là đã giao", "warning");
+      showToast("Chỉ phiếu đã xác nhận mới có thể đánh dấu là đã nhận hàng", "warning");
       return;
     }
 
     showConfirm({
-      message: "Bạn có chắc muốn đánh dấu đơn hàng này là đã giao?",
+      message: "Bạn có chắc muốn đánh dấu đơn hàng này là đã nhận hàng?",
       onConfirm: async () => {
         try {
           setLoading(true);
@@ -695,7 +760,15 @@ export default function PurchaseOrderPage() {
           if (selectedOrder?.id === order.id) {
             setSelectedOrder({ ...order, status: STATUS_DELIVERED });
           }
-          showToast("Đã đánh dấu đơn hàng là đã giao. Thông báo được gửi.", "success");
+          showToast("Đã đánh dấu đơn hàng là đã nhận hàng.", "success");
+
+          // Prompt to create import receipt immediately
+          showConfirm({
+            message: `Đơn hàng ${order.poNumber} đã nhận hàng thành công! Bạn có muốn tạo phiếu nhập kho ngay với số lượng đã đặt không?`,
+            onConfirm: () => {
+              navigate(`/nhap-kho?purchaseOrderId=${order.id}`);
+            },
+          });
         } catch {
           showToast("Không thể cập nhật trạng thái đơn hàng", "error");
         } finally {
@@ -820,9 +893,9 @@ export default function PurchaseOrderPage() {
             <FormInput
               label="Mã đơn"
               value={formData.code}
-              onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-              required
-              className="h-[48px]"
+              onChange={() => {}}
+              readOnly
+              className="h-[48px] bg-gray-50 dark:bg-gray-800/50"
             />
             <FormInput
               label="Số PO"
@@ -849,6 +922,7 @@ export default function PurchaseOrderPage() {
               }
               placeholder="Chọn ngày dự kiến giao"
               displayFormat="d/m/Y"
+              minDate={new Date()}
             />
 
             <div>
@@ -1354,7 +1428,7 @@ export default function PurchaseOrderPage() {
                     </svg>
                   </button>
                 )}
-                {normalizeOrderStatus(selectedOrder.status) === STATUS_PENDING && (
+                {normalizeOrderStatus(selectedOrder.status) === STATUS_PENDING && canApprove() && (
                   <button
                     type="button"
                     onClick={() => void handleConfirmOrder(selectedOrder)}
@@ -1381,8 +1455,8 @@ export default function PurchaseOrderPage() {
                   <button
                     type="button"
                     onClick={() => void handleMarkAsDelivered(selectedOrder)}
-                    aria-label="Đánh dấu đã giao"
-                    title="Đánh dấu đã giao"
+                    aria-label="Đánh dấu đã nhận hàng"
+                    title="Đánh dấu đã nhận hàng"
                     className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-teal-600 text-white transition-colors hover:bg-teal-700"
                   >
                     <svg
@@ -1398,6 +1472,30 @@ export default function PurchaseOrderPage() {
                         d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                       />
                     </svg>
+                  </button>
+                )}
+                {normalizeOrderStatus(selectedOrder.status) === STATUS_DELIVERED && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/nhap-kho?purchaseOrderId=${selectedOrder.id}`)}
+                    aria-label="Tạo phiếu nhập kho"
+                    title="Tạo phiếu nhập kho từ đơn hàng này"
+                    className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3.5 text-sm font-semibold text-white shadow-sm ring-1 ring-emerald-700/30 transition-all hover:bg-emerald-700 hover:shadow-md active:scale-95"
+                  >
+                    <svg
+                      className="h-4 w-4 shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
+                    Tạo phiếu nhập
                   </button>
                 )}
                 <button
@@ -1421,7 +1519,7 @@ export default function PurchaseOrderPage() {
                     />
                   </svg>
                 </button>
-                {normalizeOrderStatus(selectedOrder.status) !== STATUS_CANCELLED && (
+                {normalizeOrderStatus(selectedOrder.status) === STATUS_DRAFT && (
                   <button
                     type="button"
                     onClick={() => void handleCancelOrder(selectedOrder)}
@@ -1446,7 +1544,7 @@ export default function PurchaseOrderPage() {
                 )}
                 <button
                   type="button"
-                  onClick={() => handleDeleteOrder(selectedOrder.id)}
+                  onClick={() => handleDeleteOrder(selectedOrder.id, selectedOrder.status)}
                   aria-label="Xóa đơn hàng"
                   title="Xóa đơn hàng"
                   className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-600 text-white transition-colors hover:bg-red-700"
@@ -1728,10 +1826,7 @@ export default function PurchaseOrderPage() {
                   <span className="text-blue-700 dark:text-blue-300">Số PO:</span>
                   <span className="font-medium text-blue-900 dark:text-blue-100">{selectedOrder.poNumber || "-"}</span>
                 </div>
-                <div className="flex justify-between gap-2 px-2 py-1.5 rounded bg-amber-50 dark:bg-amber-500/10">
-                  <span className="text-amber-700 dark:text-amber-300">Số chứng từ:</span>
-                  <span className="font-medium text-amber-900 dark:text-amber-100">{selectedOrder.code || "-"}</span>
-                </div>
+
               </div>
 
               {(selectedOrder.createdBy || selectedOrder.approvedBy || selectedOrder.approvedAt) && (
@@ -1825,12 +1920,18 @@ export default function PurchaseOrderPage() {
             </div>
             <div className="flex items-center gap-3">
               <button
-                onClick={() =>
-                  showToast("Chức năng export sẽ bổ sung sau", "warning")
-                }
-                className="module-secondary-btn inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200"
+                onClick={async () => {
+                  try {
+                    await downloadExcelFromApi("/api/ExcelExport/purchase-orders", `don-dat-hang_${new Date().toISOString().slice(0, 10)}.xlsx`);
+                    showToast("Đã xuất danh sách đơn đặt hàng!", "success");
+                  } catch (e: any) {
+                    showToast(e.message || "Lỗi khi xuất Excel", "error");
+                  }
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 shadow-sm transition-colors"
               >
-                Export
+                <Download className="w-4 h-4" />
+                Xuất Excel
               </button>
             </div>
           </div>
@@ -1853,59 +1954,75 @@ export default function PurchaseOrderPage() {
             </div>
             <div className="flex gap-2 w-full sm:w-auto">
               <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setIsFilterOpen(!isFilterOpen)}
-                  className="inline-flex items-center gap-2 h-[48px] px-4 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200 shadow-sm"
-                >
-                  <SlidersHorizontal className="w-4 h-4" />
-                  Bộ lọc
-                </button>
+                {(() => {
+                  const activeCount = statusFilter ? 1 : 0;
+                  const STATUS_DOTS: Record<string, string> = {
+                    [STATUS_DRAFT]: "bg-gray-400",
+                    [STATUS_PENDING]: "bg-amber-400",
+                    [STATUS_CONFIRMED]: "bg-emerald-500",
+                    [STATUS_CANCELLED]: "bg-rose-400",
+                    [STATUS_DELIVERED]: "bg-sky-400",
+                  };
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setIsFilterOpen(!isFilterOpen)}
+                        className={`relative inline-flex h-[48px] items-center gap-2 px-4 text-sm font-medium border rounded-xl shadow-sm transition-colors ${
+                          activeCount > 0
+                            ? "bg-cyan-50 border-cyan-300 text-cyan-700 dark:bg-cyan-900/20 dark:border-cyan-700 dark:text-cyan-300"
+                            : "text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+                        }`}
+                      >
+                        <SlidersHorizontal className="w-4 h-4" />
+                        Bộ lọc
+                        {activeCount > 0 && (
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-600 text-[10px] font-bold text-white">
+                            {activeCount}
+                          </span>
+                        )}
+                      </button>
 
-                {isFilterOpen && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-40"
-                      onClick={() => setIsFilterOpen(false)}
-                    />
-                    <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl z-50 p-4">
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            Trạng thái
-                          </label>
-                          <div className="space-y-1">
-                            {STATUS_OPTIONS.map((status) => (
-                              <label
-                                key={status}
-                                className="flex items-center gap-2 p-1 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={statusFilter === status}
-                                  onChange={(e) =>
-                                    setStatusFilter(e.target.checked ? status : "")
-                                  }
-                                  className="rounded"
-                                />
-                                <span className="text-sm text-gray-700 dark:text-gray-300">
-                                  {status}
-                                </span>
-                              </label>
-                            ))}
+                      {isFilterOpen && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setIsFilterOpen(false)} />
+                          <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                            <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-4 py-3">
+                              <span className="text-sm font-semibold text-gray-800 dark:text-white">Bộ lọc</span>
+                              {activeCount > 0 && (
+                                <button
+                                  onClick={() => setStatusFilter("")}
+                                  className="text-xs font-medium text-rose-500 hover:text-rose-600 transition-colors"
+                                >
+                                  Xóa tất cả
+                                </button>
+                              )}
+                            </div>
+                            <div className="max-h-[380px] overflow-y-auto p-4 space-y-5">
+                              <div>
+                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Trạng thái</p>
+                                <div className="space-y-1">
+                                  {STATUS_OPTIONS.map((status) => (
+                                    <label key={status} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={statusFilter === status}
+                                        onChange={(e) => setStatusFilter(e.target.checked ? status : "")}
+                                        className="rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+                                      />
+                                      <span className={`h-2 w-2 rounded-full ${STATUS_DOTS[status] ?? "bg-gray-400"}`} />
+                                      <span className="text-sm text-gray-700 dark:text-gray-300">{status}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-
-                        <button
-                          onClick={() => setIsFilterOpen(false)}
-                          className="module-primary-btn w-full px-4 py-2.5 font-medium text-white transition-colors"
-                        >
-                          Áp dụng
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
 
               <CustomSelect
@@ -2029,7 +2146,7 @@ export default function PurchaseOrderPage() {
                         </svg>
                       </button>
                       <button
-                        onClick={() => handleDeleteOrder(order.id)}
+                        onClick={() => handleDeleteOrder(order.id, order.status)}
                         className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
                         aria-label="Xóa đơn hàng"
                       >

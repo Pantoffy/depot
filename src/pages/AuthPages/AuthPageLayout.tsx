@@ -19,10 +19,10 @@ export default function AuthLayout({
           <div className="relative z-10 max-w-lg px-10 text-center text-white">
             <p className="app-page-kicker text-cyan-200">Warehouse Management</p>
             <h1 className="mt-4 text-4xl font-bold leading-tight">
-              Một giao diện thống nhất cho toàn bộ đồ án
+              Hệ thống quản lý kho 
             </h1>
             <p className="mt-4 text-base leading-7 text-slate-300">
-              Từ nhập kho, xuất kho đến báo cáo và kiểm kê, mọi màn hình đều đi cùng một hệ khung, cùng nhịp điệu và cùng cảm giác sử dụng.
+              Theo dõi hàng hóa, kiểm soát tồn kho và xử lý đơn hàng
             </p>
           </div>
         </div>

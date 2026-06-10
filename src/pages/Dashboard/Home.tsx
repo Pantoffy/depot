@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import PageMeta from "../../components/common/PageMeta";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import { materialService, Material } from "../../services/materialService";
+import { resolveMaterialItemType } from "../../services/itemTypeService";
 import { supplierService, Supplier } from "../../services/supplierService";
 import { warehouseService, Warehouse } from "../../services/warehouseService";
 import { importService, ImportReceipt } from "../../services/importService";
@@ -11,6 +12,17 @@ import { unitService, Unit, DEFAULT_UNITS } from "../../services/unitService";
 import { buildInventoryQuantityMap, inventoryService, InventoryItem } from "../../services/inventoryService";
 import { purchaseOrderService, PurchaseOrder } from "../../services/purchaseOrderService";
 import { stockService, StockCheck } from "../../services/stockService";
+import ReactApexChart from "react-apexcharts";
+import {
+  ComposedChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+import { useTheme } from "../../context/ThemeContext";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -44,158 +56,6 @@ const monthKey = (d?: string) => {
   if (!d) return "";
   const dt = new Date(d);
   return isNaN(dt.getTime()) ? "" : dt.toISOString().slice(0, 7);
-};
-
-// ── SVG Smooth Line Chart ─────────────────────────────────────────────────────
-
-const LineChart: React.FC<{
-  series: { label: string; values: number[]; color: string; areaColor: string }[];
-  labels: string[];
-  height?: number;
-}> = ({ series, labels, height = 320 }) => {
-  const W = 520;
-  const H = height;
-  const PAD = { top: 24, right: 24, bottom: 36, left: 42 };
-  const cW = W - PAD.left - PAD.right;
-  const cH = H - PAD.top - PAD.bottom;
-  const n = labels.length;
-
-  const allVals = series.flatMap((s) => s.values);
-  const rawMax = Math.max(...allVals, 1);
-  // Round up to a nice number for cleaner Y-axis
-  const step = rawMax <= 4 ? 1 : rawMax <= 10 ? 2 : rawMax <= 20 ? 5 : 10;
-  const maxV = Math.ceil(rawMax / step) * step;
-
-  const xPos = (i: number) => PAD.left + (i / Math.max(n - 1, 1)) * cW;
-  const yPos = (v: number) => PAD.top + cH - (v / maxV) * cH;
-
-  // Smooth cubic bezier path
-  const smoothPath = (vals: number[]) => {
-    if (vals.length < 2) return `M ${xPos(0)},${yPos(vals[0] || 0)}`;
-    const pts = vals.map((v, i) => ({ x: xPos(i), y: yPos(v) }));
-    let d = `M ${pts[0].x},${pts[0].y}`;
-    for (let i = 1; i < pts.length; i++) {
-      const cp1x = (pts[i - 1].x + pts[i].x) / 2;
-      d += ` C ${cp1x},${pts[i - 1].y} ${cp1x},${pts[i].y} ${pts[i].x},${pts[i].y}`;
-    }
-    return d;
-  };
-
-  const smoothArea = (vals: number[]) => {
-    const line = smoothPath(vals);
-    const last = vals.length - 1;
-    return `${line} L ${xPos(last)},${PAD.top + cH} L ${xPos(0)},${PAD.top + cH} Z`;
-  };
-
-  const guideCount = 4;
-  const guides = Array.from({ length: guideCount + 1 }, (_, i) => Math.round((i / guideCount) * maxV));
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ display: "block", height }} aria-hidden="true">
-      <defs>
-        {series.map((s, si) => (
-          <linearGradient key={si} id={`aGrad${si}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={s.color} stopOpacity="0.22" />
-            <stop offset="75%" stopColor={s.color} stopOpacity="0.06" />
-            <stop offset="100%" stopColor={s.color} stopOpacity="0" />
-          </linearGradient>
-        ))}
-        {series.map((_s, si) => (
-          <filter key={`glow${si}`} id={`glow${si}`} x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="2.5" result="blur" />
-            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
-        ))}
-      </defs>
-
-      {/* Horizontal grid lines */}
-      {guides.map((v) => (
-        <g key={v}>
-          <line
-            x1={PAD.left} y1={yPos(v)} x2={PAD.left + cW} y2={yPos(v)}
-            stroke={v === 0 ? "#e5e7eb" : "#f3f4f6"}
-            strokeWidth={v === 0 ? "1.5" : "1"}
-            strokeDasharray={v === 0 ? "0" : "5 4"}
-          />
-          <text x={PAD.left - 8} y={yPos(v) + 4} textAnchor="end" fontSize={10} fill="#9ca3af" fontFamily="inherit">
-            {v}
-          </text>
-        </g>
-      ))}
-
-      {/* Vertical column lines at each label */}
-      {labels.map((_, i) => (
-        <line key={`vl${i}`}
-          x1={xPos(i)} y1={PAD.top} x2={xPos(i)} y2={PAD.top + cH}
-          stroke="#f9fafb" strokeWidth="1"
-        />
-      ))}
-
-      {/* Area fills */}
-      {series.map((s, si) => (
-        <path key={`area-${si}`} d={smoothArea(s.values)} fill={`url(#aGrad${si})`} />
-      ))}
-
-      {/* Lines */}
-      {series.map((s, si) => (
-        <path
-          key={`line-${si}`}
-          d={smoothPath(s.values)}
-          fill="none"
-          stroke={s.color}
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          filter={`url(#glow${si})`}
-        />
-      ))}
-
-      {/* All data point dots */}
-      {series.map((s, si) =>
-        s.values.map((v, i) => {
-          const isLast = i === s.values.length - 1;
-          return (
-            <circle
-              key={`dot-${si}-${i}`}
-              cx={xPos(i)} cy={yPos(v)}
-              r={isLast ? 5 : 3.5}
-              fill="white"
-              stroke={s.color}
-              strokeWidth={isLast ? 2.5 : 2}
-              opacity={isLast ? 1 : 0.85}
-            />
-          );
-        })
-      )}
-
-      {/* Value labels on last dot */}
-      {series.map((s, si) => {
-        const last = s.values.length - 1;
-        const val = s.values[last];
-        if (val === 0) return null;
-        const above = yPos(val) - PAD.top > 14;
-        return (
-          <text
-            key={`lbl-${si}`}
-            x={xPos(last)}
-            y={yPos(val) + (above ? -9 : 14)}
-            textAnchor="middle"
-            fontSize={10}
-            fontWeight="600"
-            fill={s.color}
-            fontFamily="inherit"
-          >
-            {val}
-          </text>
-        );
-      })}
-
-      {/* X-axis labels */}
-      {labels.map((l, i) => (
-        <text key={i} x={xPos(i)} y={H - 8} textAnchor="middle" fontSize={10} fill="#9ca3af" fontFamily="inherit">{l}</text>
-      ))}
-    </svg>
-  );
 };
 
 // ── KPI Stat Card ─────────────────────────────────────────────────────────────
@@ -249,6 +109,56 @@ const poBadge = (s: string) => {
   return <span className={`${base} bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400`}>{s}</span>;
 };
 
+// ── Line chart custom tooltip ────────────────────────────────────────────────
+
+interface ChartTooltipEntry {
+  name: string;
+  value: number;
+  color: string;
+}
+
+const LineChartTooltip = ({
+  active,
+  payload,
+  label,
+  isDark,
+}: {
+  active?: boolean;
+  payload?: ChartTooltipEntry[];
+  label?: string;
+  isDark: boolean;
+}) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div
+      className={`rounded-xl border px-4 py-3 shadow-2xl backdrop-blur-sm ${
+        isDark ? "border-gray-700/80 bg-gray-800/95" : "border-gray-100 bg-white/95"
+      }`}
+    >
+      <p className={`mb-2 text-[11px] font-semibold uppercase tracking-wider ${
+        isDark ? "text-gray-400" : "text-gray-400"
+      }`}>
+        {label}
+      </p>
+      {payload.map((p) => {
+        const isValue = p.name.startsWith("Giá trị");
+        return (
+          <div key={p.name} className="flex items-center gap-2.5 py-0.5">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: p.color }} />
+            <span className={`text-xs ${ isDark ? "text-gray-300" : "text-gray-600" }`}>{p.name}</span>
+            <span className={`ml-4 text-xs font-bold ${ isDark ? "text-white" : "text-gray-900" }`}>
+              {isValue
+                ? p.value.toLocaleString("vi-VN", { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+                : p.value}{" "}
+              <span className="font-normal opacity-60">{isValue ? "triệu đ" : "phiếu"}</span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 // ── Card shell ────────────────────────────────────────────────────────────────
 
 const Card: React.FC<{
@@ -267,7 +177,7 @@ const Card: React.FC<{
       </div>
       {action}
     </div>
-    <div className="flex-1 px-5 py-4">{children}</div>
+    <div className="flex flex-col flex-1 px-5 py-4">{children}</div>
     {footer && <div className="border-t border-gray-100 px-5 py-3 dark:border-gray-800">{footer}</div>}
   </div>
 );
@@ -300,7 +210,10 @@ const TimelineItem: React.FC<{
 
 export default function Home() {
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [loading, setLoading] = useState(true);
+  const [chartTab, setChartTab] = useState<"count" | "value">("count");
 
   const [materials,      setMaterials]      = useState<Material[]>([]);
   const [suppliers,      setSuppliers]      = useState<Supplier[]>([]);
@@ -357,12 +270,16 @@ export default function Home() {
 
   const stockSegs = useMemo(() => ({
     healthy: materials.filter((m) => qty(m.id) > 10).length,
-    warn:    materials.filter((m) => { const q = qty(m.id); return q > 0 && q <= 10; }).length,
-    empty:   materials.filter((m) => qty(m.id) <= 0).length,
+    warn:    materials.filter((m) => { const q = qty(m.id); return resolveMaterialItemType(m) !== "asset" && q > 0 && q <= 10; }).length,
+    empty:   materials.filter((m) => resolveMaterialItemType(m) !== "asset" && qty(m.id) <= 0).length,
   }), [materials, qtyMap]);
 
   const lowStock = useMemo(() =>
-    materials.map((m) => ({ ...m, stock: qty(m.id) })).filter((m) => m.stock <= 10).sort((a, b) => a.stock - b.stock),
+    materials
+      .filter((m) => resolveMaterialItemType(m) !== "asset")
+      .map((m) => ({ ...m, stock: qty(m.id) }))
+      .filter((m) => m.stock <= 10)
+      .sort((a, b) => a.stock - b.stock),
   [materials, qtyMap]);
 
   const importsM  = useMemo(() => imports.filter((r) => monthKey(r.importTime || r.createdAt) === thisM), [imports, thisM]);
@@ -381,6 +298,15 @@ export default function Home() {
 
   const importSeries = useMemo(() => months6.map((m) => imports.filter((r) => monthKey(r.importTime || r.createdAt) === m.key).length), [imports, months6]);
   const exportSeries = useMemo(() => months6.map((m) => exports.filter((r) => monthKey(r.exportDate  || r.createdAt) === m.key).length), [exports, months6]);
+
+  const importValSeries = useMemo(() => months6.map((m) =>
+    imports.filter((r) => monthKey(r.importTime || r.createdAt) === m.key)
+      .reduce((s, r) => s + (r.totalAmount || 0), 0) / 1_000_000
+  ), [imports, months6]);
+  const exportValSeries = useMemo(() => months6.map((m) =>
+    exports.filter((r) => monthKey(r.exportDate || r.createdAt) === m.key)
+      .reduce((s, r) => s + (r.totalAmount || 0), 0) / 1_000_000
+  ), [exports, months6]);
 
   // prev month delta
   const prevM = useMemo(() => {
@@ -500,38 +426,184 @@ export default function Home() {
           <Card
             className="xl:col-span-2"
             title="Hoạt Động Nhập Xuất"
-            subtitle="Số phiếu mỗi tháng trong 6 tháng qua"
-            footer={
-              <div className="flex flex-wrap items-center gap-6 text-xs text-gray-500 dark:text-gray-400">
-                <span className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-full bg-cyan-500 shadow-[0_0_0_3px_rgba(8,145,178,0.15)]" />
-                  <span className="text-gray-600 dark:text-gray-300">Nhập kho</span>
-                  <span className="font-bold text-gray-800 dark:text-gray-100">{importsM.length}</span>
-                  <span>tháng này</span>
-                  {deltaSign(importsM.length, importsPrev)}
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.15)]" />
-                  <span className="text-gray-600 dark:text-gray-300">Xuất kho</span>
-                  <span className="font-bold text-gray-800 dark:text-gray-100">{exportsM.length}</span>
-                  <span>tháng này</span>
-                  {deltaSign(exportsM.length, exportsPrev)}
-                </span>
-                <span className="ml-auto text-gray-400 dark:text-gray-500">
-                  Tổng tồn: <span className="font-semibold text-gray-600 dark:text-gray-300">{totalStock.toLocaleString("vi-VN")}</span>
-                </span>
+            subtitle={chartTab === "count" ? "Số phiếu mỗi tháng trong 6 tháng qua" : "Giá trị nhập xuất mỗi tháng trong 6 tháng qua"}
+            action={
+              <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-medium">
+                <button
+                  onClick={() => setChartTab("count")}
+                  className={`px-3 py-1.5 transition-colors ${
+                    chartTab === "count"
+                      ? "bg-blue-600 text-white"
+                      : "bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  }`}
+                >
+                  Số phiếu
+                </button>
+                <button
+                  onClick={() => setChartTab("value")}
+                  className={`px-3 py-1.5 border-l border-gray-200 dark:border-gray-700 transition-colors ${
+                    chartTab === "value"
+                      ? "bg-blue-600 text-white"
+                      : "bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  }`}
+                >
+                  Giá trị
+                </button>
               </div>
             }
+            footer={
+              chartTab === "count" ? (
+                <div className="flex flex-wrap items-center gap-6 text-xs text-gray-500 dark:text-gray-400">
+                  <span className="flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full bg-cyan-500 shadow-[0_0_0_3px_rgba(8,145,178,0.15)]" />
+                    <span className="text-gray-600 dark:text-gray-300">Nhập kho</span>
+                    <span className="font-bold text-gray-800 dark:text-gray-100">{importsM.length}</span>
+                    <span>phiếu tháng này</span>
+                    {deltaSign(importsM.length, importsPrev)}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.15)]" />
+                    <span className="text-gray-600 dark:text-gray-300">Xuất kho</span>
+                    <span className="font-bold text-gray-800 dark:text-gray-100">{exportsM.length}</span>
+                    <span>phiếu tháng này</span>
+                    {deltaSign(exportsM.length, exportsPrev)}
+                  </span>
+                  <span className="ml-auto text-gray-400 dark:text-gray-500">
+                    Tổng tồn: <span className="font-semibold text-gray-600 dark:text-gray-300">{totalStock.toLocaleString("vi-VN")}</span>
+                  </span>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-6 text-xs text-gray-500 dark:text-gray-400">
+                  <span className="flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full bg-indigo-500 shadow-[0_0_0_3px_rgba(99,102,241,0.15)]" />
+                    <span className="text-gray-600 dark:text-gray-300">Giá trị nhập</span>
+                    <span className="font-bold text-gray-800 dark:text-gray-100">{fmtMoney(importVal)}</span>
+                    <span>đ tháng này</span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.15)]" />
+                    <span className="text-gray-600 dark:text-gray-300">Giá trị xuất</span>
+                    <span className="font-bold text-gray-800 dark:text-gray-100">{fmtMoney(exportVal)}</span>
+                    <span>đ tháng này</span>
+                  </span>
+                  <span className="ml-auto text-gray-400 dark:text-gray-500">
+                    Tổng tồn: <span className="font-semibold text-gray-600 dark:text-gray-300">{totalStock.toLocaleString("vi-VN")}</span>
+                  </span>
+                </div>
+              )
+            }
           >
-            <div className="px-2 pb-2 pt-4">
-              <LineChart
-                labels={months6.map((m) => m.label)}
-                series={[
-                  { label: "Nhập", values: importSeries, color: "#0891b2", areaColor: "#0891b2" },
-                  { label: "Xuất", values: exportSeries, color: "#10b981", areaColor: "#10b981" },
-                ]}
-                height={320}
-              />
+            <div className="-mx-2 mt-1 flex flex-1 flex-col min-h-0">
+              {(() => {
+                const gridColor = isDark ? "#1f2937" : "#cbd5e1";
+                const tickColor = isDark ? "#6b7280" : "#9ca3af";
+
+                if (chartTab === "count") {
+                  const chartData = months6.map((m, i) => ({
+                    label: m.label,
+                    "Nhập kho": importSeries[i],
+                    "Xuất kho": exportSeries[i],
+                  }));
+                  return (
+                    <ResponsiveContainer width="100%" height="100%" minHeight={248}>
+                      <ComposedChart data={chartData} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+                        <defs>
+                          <linearGradient id="gradImport" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#0891b2" stopOpacity={0.35} />
+                            <stop offset="60%" stopColor="#0891b2" stopOpacity={0.08} />
+                            <stop offset="100%" stopColor="#0891b2" stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id="gradExport" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#10b981" stopOpacity={0.35} />
+                            <stop offset="60%" stopColor="#10b981" stopOpacity={0.08} />
+                            <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+                          </linearGradient>
+                          <filter id="shadowImport">
+                            <feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#0891b2" floodOpacity="0.25" />
+                          </filter>
+                          <filter id="shadowExport">
+                            <feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#10b981" floodOpacity="0.25" />
+                          </filter>
+                        </defs>
+                        <CartesianGrid strokeDasharray="5 5" stroke={gridColor} vertical={false} />
+                        <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: tickColor, fontSize: 11, fontWeight: 500 }} dy={6} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fill: tickColor, fontSize: 11 }} allowDecimals={false} width={30} tickFormatter={(v: number) => String(Math.round(v))} />
+                        <Tooltip
+                          content={({ active, payload, label }) => (
+                            <LineChartTooltip active={active} payload={payload as unknown as ChartTooltipEntry[]} label={String(label ?? "")} isDark={isDark} />
+                          )}
+                          cursor={{ stroke: isDark ? "#374151" : "#e2e8f0", strokeWidth: 1.5, strokeDasharray: "4 4" }}
+                        />
+                        <Area type="linear" dataKey="Nhập kho" stroke="#0891b2" strokeWidth={2.5} fill="url(#gradImport)"
+                          dot={{ r: 4, fill: "#0891b2", stroke: isDark ? "#111827" : "#ffffff", strokeWidth: 2.5 }}
+                          activeDot={{ r: 7, fill: "#0891b2", stroke: isDark ? "#111827" : "#ffffff", strokeWidth: 2.5, filter: "url(#shadowImport)" }}
+                          strokeLinecap="round" strokeLinejoin="round"
+                        />
+                        <Area type="linear" dataKey="Xuất kho" stroke="#10b981" strokeWidth={2.5} fill="url(#gradExport)"
+                          dot={{ r: 4, fill: "#10b981", stroke: isDark ? "#111827" : "#ffffff", strokeWidth: 2.5 }}
+                          activeDot={{ r: 7, fill: "#10b981", stroke: isDark ? "#111827" : "#ffffff", strokeWidth: 2.5, filter: "url(#shadowExport)" }}
+                          strokeLinecap="round" strokeLinejoin="round"
+                        />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  );
+                }
+
+                // Value tab
+                const chartData = months6.map((m, i) => ({
+                  label: m.label,
+                  "Giá trị nhập": Math.round(importValSeries[i] * 10) / 10,
+                  "Giá trị xuất": Math.round(exportValSeries[i] * 10) / 10,
+                }));
+                return (
+                  <ResponsiveContainer width="100%" height="100%" minHeight={248}>
+                    <ComposedChart data={chartData} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+                      <defs>
+                        <linearGradient id="gradValImport" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#6366f1" stopOpacity={0.35} />
+                          <stop offset="60%" stopColor="#6366f1" stopOpacity={0.08} />
+                          <stop offset="100%" stopColor="#6366f1" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="gradValExport" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.35} />
+                          <stop offset="60%" stopColor="#f59e0b" stopOpacity={0.08} />
+                          <stop offset="100%" stopColor="#f59e0b" stopOpacity={0} />
+                        </linearGradient>
+                        <filter id="shadowValImport">
+                          <feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#6366f1" floodOpacity="0.25" />
+                        </filter>
+                        <filter id="shadowValExport">
+                          <feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#f59e0b" floodOpacity="0.25" />
+                        </filter>
+                      </defs>
+                      <CartesianGrid strokeDasharray="5 5" stroke={gridColor} vertical={false} />
+                      <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: tickColor, fontSize: 11, fontWeight: 500 }} dy={6} />
+                      <YAxis
+                        axisLine={false} tickLine={false} tick={{ fill: tickColor, fontSize: 10 }} width={42}
+                        tickFormatter={(v: number) =>
+                          v >= 1000 ? `${(v / 1000).toFixed(0)}B` : v >= 1 ? `${v.toFixed(0)}M` : v > 0 ? `${(v * 1000).toFixed(0)}K` : "0"
+                        }
+                      />
+                      <Tooltip
+                        content={({ active, payload, label }) => (
+                          <LineChartTooltip active={active} payload={payload as unknown as ChartTooltipEntry[]} label={String(label ?? "")} isDark={isDark} />
+                        )}
+                        cursor={{ stroke: isDark ? "#374151" : "#e2e8f0", strokeWidth: 1.5, strokeDasharray: "4 4" }}
+                      />
+                      <Area type="linear" dataKey="Giá trị nhập" stroke="#6366f1" strokeWidth={2.5} fill="url(#gradValImport)"
+                        dot={{ r: 4, fill: "#6366f1", stroke: isDark ? "#111827" : "#ffffff", strokeWidth: 2.5 }}
+                        activeDot={{ r: 7, fill: "#6366f1", stroke: isDark ? "#111827" : "#ffffff", strokeWidth: 2.5, filter: "url(#shadowValImport)" }}
+                        strokeLinecap="round" strokeLinejoin="round"
+                      />
+                      <Area type="linear" dataKey="Giá trị xuất" stroke="#f59e0b" strokeWidth={2.5} fill="url(#gradValExport)"
+                        dot={{ r: 4, fill: "#f59e0b", stroke: isDark ? "#111827" : "#ffffff", strokeWidth: 2.5 }}
+                        activeDot={{ r: 7, fill: "#f59e0b", stroke: isDark ? "#111827" : "#ffffff", strokeWidth: 2.5, filter: "url(#shadowValExport)" }}
+                        strokeLinecap="round" strokeLinejoin="round"
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                );
+              })()}
             </div>
           </Card>
 
@@ -539,57 +611,91 @@ export default function Home() {
           <Card title="Cơ Cấu Tồn Kho" subtitle={`${materials.length} nguyên liệu`}>
             {(() => {
               const segs = [
-                { label: "Ổn định",    sub: ">10",  value: stockSegs.healthy, color: "#10b981", tw: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
-                { label: "Sắp thiếu", sub: "1–10", value: stockSegs.warn,    color: "#f59e0b", tw: "bg-amber-500",   text: "text-amber-600 dark:text-amber-400"   },
-                { label: "Hết hàng",  sub: "0",    value: stockSegs.empty,   color: "#ef4444", tw: "bg-rose-500",    text: "text-rose-600 dark:text-rose-400"     },
+                { label: "Ổn định",    sub: ">10",  value: stockSegs.healthy, color: "#10b981", text: "text-emerald-600 dark:text-emerald-400" },
+                { label: "Sắp thiếu", sub: "1–10", value: stockSegs.warn,    color: "#f59e0b", text: "text-amber-600 dark:text-amber-400"   },
+                { label: "Hết hàng",  sub: "0",    value: stockSegs.empty,   color: "#ef4444", text: "text-rose-600 dark:text-rose-400"     },
               ];
               const total = stockSegs.healthy + stockSegs.warn + stockSegs.empty;
-              const healthPct = total > 0 ? Math.round((stockSegs.healthy / total) * 100) : 100;
               return (
-                <div className="space-y-5">
-                  {/* Donut-style big number */}
-                  <div className="flex items-center gap-4 rounded-xl bg-gray-50 px-4 py-3 dark:bg-gray-800/60">
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500">Sức khoẻ tồn kho</p>
-                      <p className={`text-3xl font-bold ${healthPct >= 80 ? "text-emerald-600 dark:text-emerald-400" : healthPct >= 50 ? "text-amber-600 dark:text-amber-400" : "text-rose-600 dark:text-rose-400"}`}>{healthPct}%</p>
-                    </div>
-                    <div className="ml-auto text-right">
-                      <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500">Tổng tồn</p>
-                      <p className="text-lg font-bold text-gray-900 dark:text-white">{totalStock.toLocaleString("vi-VN")}</p>
-                    </div>
-                  </div>
+                <div className="space-y-4">
+                  {/* Donut chart */}
+                  <ReactApexChart
+                    type="donut"
+                    height={180}
+                    series={[stockSegs.healthy, stockSegs.warn, stockSegs.empty]}
+                    options={{
+                      chart: { type: "donut", background: "transparent", fontFamily: "inherit", animations: { enabled: true, speed: 600 }, offsetY: -6 },
+                      colors: ["#10b981", "#f59e0b", "#ef4444"],
+                      labels: ["Ổn định", "Sắp thiếu", "Hết hàng"],
+                      legend: { show: false },
+                      dataLabels: { enabled: false },
+                      plotOptions: {
+                        pie: {
+                          donut: {
+                            size: "68%",
+                            labels: {
+                              show: true,
+                              total: {
+                                show: true,
+                                label: "Tổng tồn",
+                                color: isDark ? "#9ca3af" : "#6b7280",
+                                fontSize: "11px",
+                                fontWeight: "500",
+                                formatter: () =>
+                                  totalStock >= 10000
+                                    ? `${(totalStock / 1000).toFixed(1)}K`
+                                    : totalStock.toLocaleString("vi-VN"),
+                              },
+                              value: {
+                                show: true,
+                                fontSize: "22px",
+                                fontWeight: "700",
+                                color: isDark ? "#f9fafb" : "#111827",
+                                offsetY: 4,
+                                formatter: (v: string) => v,
+                              },
+                              name: {
+                                show: true,
+                                fontSize: "11px",
+                                color: isDark ? "#9ca3af" : "#6b7280",
+                                offsetY: -4,
+                              },
+                            },
+                          },
+                        },
+                      },
+                      tooltip: { y: { formatter: (v: number) => `${v} loại` }, theme: isDark ? "dark" : "light" },
+                      theme: { mode: isDark ? "dark" : "light" },
+                      stroke: { width: 2, colors: [isDark ? "#111827" : "#ffffff"] },
+                    }}
+                  />
 
-                  {/* Stacked bar */}
-                  <div className="flex h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-                    {segs.map((seg) => (
-                      <div key={seg.label} className={`${seg.tw} transition-all`}
-                        style={{ width: `${total > 0 ? (seg.value / total) * 100 : 0}%` }}
-                        title={`${seg.label}: ${seg.value}`} />
-                    ))}
-                  </div>
-
-                  {/* Rows */}
-                  <div className="space-y-2.5">
+                  {/* Legend rows */}
+                  <div className="space-y-2">
                     {segs.map((seg) => (
                       <div key={seg.label} className="flex items-center gap-3">
-                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: seg.color }} />
-                        <span className="flex-1 text-sm text-gray-600 dark:text-gray-300">{seg.label} <span className="text-gray-400">({seg.sub})</span></span>
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: seg.color }} />
+                        <span className="flex-1 text-sm text-gray-600 dark:text-gray-300">
+                          {seg.label} <span className="text-gray-400">({seg.sub})</span>
+                        </span>
                         <span className={`text-sm font-bold ${seg.text}`}>{seg.value}</span>
-                        <span className="w-10 text-right text-xs text-gray-400">{total > 0 ? Math.round((seg.value / total) * 100) : 0}%</span>
+                        <span className="w-10 text-right text-xs text-gray-400">
+                          {total > 0 ? Math.round((seg.value / total) * 100) : 0}%
+                        </span>
                       </div>
                     ))}
                   </div>
 
                   {/* Month summary mini */}
-                  <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
-                    <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Tháng này</p>
+                  <div className="border-t border-gray-100 pt-3 dark:border-gray-800">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Tháng này</p>
                     <div className="grid grid-cols-2 gap-2">
                       {[
-                        { label: "Phiếu nhập", value: importsM.length, sub: fmtMoney(importVal) + "đ", color: "text-cyan-600 dark:text-cyan-400" },
-                        { label: "Phiếu xuất", value: exportsM.length, sub: fmtMoney(exportVal) + "đ", color: "text-emerald-600 dark:text-emerald-400" },
-                        { label: "Chờ kiểm kê", value: pendingSC.length, sub: "phiếu", color: pendingSC.length > 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-400" },
-                        { label: "Kho bảo trì", value: maintenance.length, sub: "kho", color: maintenance.length > 0 ? "text-rose-500 dark:text-rose-400" : "text-gray-400" },
-                      ].map(item => (
+                        { label: "Phiếu nhập",  value: importsM.length,    sub: fmtMoney(importVal) + "đ", color: "text-cyan-600 dark:text-cyan-400" },
+                        { label: "Phiếu xuất",  value: exportsM.length,    sub: fmtMoney(exportVal) + "đ", color: "text-emerald-600 dark:text-emerald-400" },
+                        { label: "Chờ kiểm kê", value: pendingSC.length,   sub: "phiếu",                   color: pendingSC.length   > 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-400" },
+                        { label: "Kho bảo trì", value: maintenance.length, sub: "kho",                     color: maintenance.length > 0 ? "text-rose-500 dark:text-rose-400"  : "text-gray-400" },
+                      ].map((item) => (
                         <div key={item.label} className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800/60">
                           <p className="text-[10px] text-gray-400 dark:text-gray-500">{item.label}</p>
                           <p className={`text-lg font-bold ${item.color}`}>{item.value}</p>
@@ -698,9 +804,9 @@ export default function Home() {
         {/* ── Low stock + Quick actions ─────────────────────────────────────────── */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
 
-          {/* Low stock with progress bars */}
-          {lowStock.length > 0 && (
-            <div className="lg:col-span-2">
+          {/* Low stock OR Warehouse status — always 2/3 */}
+          <div className="lg:col-span-2">
+            {lowStock.length > 0 ? (
               <Card
                 title="Nguyên Liệu Tồn Kho Thấp"
                 subtitle={`${lowStock.length} cần chú ý · ${lowStock.filter(m => m.stock <= 0).length} hết hàng`}
@@ -731,8 +837,47 @@ export default function Home() {
                   })}
                 </div>
               </Card>
-            </div>
-          )}
+            ) : (
+              <Card
+                title="Tình Trạng Kho"
+                subtitle={`${warehouses.length} kho · ${warehouses.filter(w => w.status === "Hoạt động").length} đang hoạt động`}
+                action={<button onClick={() => navigate("/quan-ly-kho")} className="text-xs text-cyan-600 hover:underline dark:text-cyan-400">Quản lý kho</button>}
+              >
+                <div className="space-y-2">
+                  {warehouses.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-gray-400">Chưa có dữ liệu</p>
+                  ) : (
+                    warehouses.map((w) => {
+                      const isActive = w.status === "Hoạt động";
+                      const isMaint  = w.status === "Bảo trì";
+                      const dotColor  = isActive ? "bg-emerald-500" : isMaint ? "bg-amber-400" : "bg-red-400";
+                      const tagColor  = isActive
+                        ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400"
+                        : isMaint
+                        ? "bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400"
+                        : "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400";
+                      const warehouseItems = inventories.filter(inv => inv.warehouseId === w.id).length;
+                      const warehouseQty   = inventories.filter(inv => inv.warehouseId === w.id).reduce((s, inv) => s + Number(inv.quantity || 0), 0);
+                      return (
+                        <div key={w.id} className="flex items-center gap-3 rounded-xl border border-gray-100 p-3 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${dotColor}`} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{w.name}</p>
+                            <p className="text-xs text-gray-400">{w.code}{w.managerName ? ` · ${w.managerName}` : ""}</p>
+                          </div>
+                          <div className="shrink-0 text-right mr-3">
+                            <p className="text-sm font-bold text-gray-700 dark:text-gray-200">{warehouseQty.toLocaleString("vi-VN")}</p>
+                            <p className="text-[10px] text-gray-400">{warehouseItems} loại</p>
+                          </div>
+                          <span className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-semibold ${tagColor}`}>{w.status || "–"}</span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </Card>
+            )}
+          </div>
 
           {/* Quick actions — icon tiles */}
           <Card title="Thao Tác Nhanh" subtitle="Truy cập nhanh">

@@ -1231,9 +1231,9 @@ span.flatpickr-weekday,
 }
 
 .calendar-event-chip--order {
-  color: rgb(196 181 253);
-  background: rgba(109, 40, 217, 0.15);
-  border-color: rgba(196, 181, 253, 0.35);
+  color: rgb(109 40 217);
+  background: rgb(245 243 255);
+  border-color: rgb(221 214 254);
 }
 
 .dark .calendar-event-chip--export {
