@@ -260,7 +260,9 @@ export default function KiemKe() {
   const loadWarehouses = async () => {
     try {
       const data = await warehouseService.getAllWarehouses();
-      setWarehouses(data || []);
+      // Chỉ hiện các kho đang hoạt động
+      const activeWarehouses = (data || []).filter((w: Warehouse) => w.status === "Hoạt động");
+      setWarehouses(activeWarehouses);
     } catch (error) {
       console.error("Error loading warehouses:", error);
       showToast("Không thể tải danh sách kho", "error");

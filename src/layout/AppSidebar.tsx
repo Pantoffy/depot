@@ -25,6 +25,16 @@ const navItems: NavItem[] = [
     name: "Tổng quan",
     path: "/",
   },
+   {
+    name: "Quản lý dữ liệu",
+    icon: <BoxCubeIcon />,
+    subItems: [
+      { name: "Vật tư", path: "/quan-ly-nguyen-lieu" },
+      { name: "Nhà cung cấp", path: "/quan-ly-nha-cung-cap" },
+      { name: "Quản lý kho", path: "/quan-ly-kho" },
+      { name: "Báo cáo thống kê", path: "/bao-cao-xuat-nhap-ton" },
+    ],
+  },
   {
     name: "Hoạt động kho",
     icon: <HorizontaLDots/>,
@@ -35,16 +45,7 @@ const navItems: NavItem[] = [
       { name: "Kiểm kê", path: "/kiem-ke" },
     ],
   },
-  {
-    name: "Quản lý dữ liệu",
-    icon: <BoxCubeIcon />,
-    subItems: [
-      { name: "Vật tư", path: "/quan-ly-nguyen-lieu" },
-      { name: "Nhà cung cấp", path: "/quan-ly-nha-cung-cap" },
-      { name: "Quản lý kho", path: "/quan-ly-kho" },
-      { name: "Báo cáo thống kê", path: "/bao-cao-xuat-nhap-ton" },
-    ],
-  },
+ 
 
   // ✅ NEW MENU
   {

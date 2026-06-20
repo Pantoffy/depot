@@ -21,6 +21,7 @@ import {
   type PurchaseOrder,
   type PurchaseOrderDetail,
 } from "../../services/purchaseOrderService";
+import { importService } from "../../services/importService";
 
 type PurchaseOrderView = "list" | "create" | "edit" | "detail";
 
@@ -216,6 +217,7 @@ export default function PurchaseOrderPage() {
   const [availableMaterials, setAvailableMaterials] = useState<Material[]>([]);
   const [availableSuppliers, setAvailableSuppliers] = useState<Supplier[]>([]);
   const [availableUnits, setAvailableUnits] = useState<any[]>([]);
+  const [importReceipts, setImportReceipts] = useState<any[]>([]);
 
   const navigate = useNavigate();
   const { canApprove } = useAuth();
@@ -273,10 +275,11 @@ export default function PurchaseOrderPage() {
   const loadData = async (): Promise<void> => {
     try {
       setLoading(true);
-      const [materialsResponse, suppliers, units] = await Promise.all([
+      const [materialsResponse, suppliers, units, imports] = await Promise.all([
         materialService.getAllMaterials(),
         supplierService.getAllSuppliers(),
         unitService.getAllUnits(),
+        importService.getAllImportReceipts(),
       ]);
       const hydratedMaterials = hydrateMaterialsItemType(materialsResponse || []);
       const poMaterials = hydratedMaterials.filter((material) => {
@@ -286,6 +289,7 @@ export default function PurchaseOrderPage() {
       setAvailableMaterials(poMaterials);
       setAvailableSuppliers(suppliers || []);
       setAvailableUnits(units || []);
+      setImportReceipts(imports || []);
       await refreshOrders(hydratedMaterials || [], suppliers || [], units || []);
     } catch {
       showToast("Không thể tải dữ liệu đơn đặt hàng", "error");
@@ -778,6 +782,14 @@ export default function PurchaseOrderPage() {
     });
   };
 
+  // Lấy danh sách phiếu nhập liên kết với PO
+  const getLinkedImports = (po: UiOrder) => {
+    return importReceipts.filter((receipt) => {
+      const docNo = (receipt.documentNo || "").trim().toLowerCase();
+      return docNo === po.code.toLowerCase() || docNo === po.poNumber.toLowerCase();
+    });
+  };
+
   const filteredOrders = useMemo(() => {
     return orders
       .filter((o) => {
@@ -1230,9 +1242,9 @@ export default function PurchaseOrderPage() {
                       <th className="px-4 py-2 text-right font-semibold text-gray-700 dark:text-gray-300">
                         Thành Tiền
                       </th>
-                      <th className="px-4 py-2 text-center font-semibold text-gray-700 dark:text-gray-300">
+                      {/*<th className="px-4 py-2 text-center font-semibold text-gray-700 dark:text-gray-300">
                         Hành Động
-                      </th>
+                      </th>*/}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -1475,28 +1487,53 @@ export default function PurchaseOrderPage() {
                   </button>
                 )}
                 {normalizeOrderStatus(selectedOrder.status) === STATUS_DELIVERED && (
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/nhap-kho?purchaseOrderId=${selectedOrder.id}`)}
-                    aria-label="Tạo phiếu nhập kho"
-                    title="Tạo phiếu nhập kho từ đơn hàng này"
-                    className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3.5 text-sm font-semibold text-white shadow-sm ring-1 ring-emerald-700/30 transition-all hover:bg-emerald-700 hover:shadow-md active:scale-95"
-                  >
-                    <svg
-                      className="h-4 w-4 shrink-0"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                      />
-                    </svg>
-                    Tạo phiếu nhập
-                  </button>
+                  (() => {
+                    const linkedImports = getLinkedImports(selectedOrder);
+                    return linkedImports.length > 0 ? (
+                      <div className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-100 px-3.5 text-sm font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                        <svg
+                          className="h-4 w-4 shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                        <span>
+                          Đơn hàng đang được nhập tại phiếu nhập{" "}
+                          {linkedImports.map((imp) => imp.receiptNumber).join(", ")}
+                        </span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/nhap-kho?purchaseOrderId=${selectedOrder.id}`)}
+                        aria-label="Tạo phiếu nhập kho"
+                        title="Tạo phiếu nhập kho từ đơn hàng này"
+                        className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3.5 text-sm font-semibold text-white shadow-sm ring-1 ring-emerald-700/30 transition-all hover:bg-emerald-700 hover:shadow-md active:scale-95"
+                      >
+                        <svg
+                          className="h-4 w-4 shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          />
+                        </svg>
+                        Tạo phiếu nhập
+                      </button>
+                    );
+                  })()
                 )}
                 <button
                   type="button"
@@ -1715,9 +1752,9 @@ export default function PurchaseOrderPage() {
                     <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
                       Thành tiền
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
+                    {/*<th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
                       Hành động
-                    </th>
+                    </th>*/}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -1752,7 +1789,7 @@ export default function PurchaseOrderPage() {
                           {(item.soLuong * item.donGia).toLocaleString("vi-VN")}₫
                         </td>
                         <td className="px-4 py-4 text-center">
-                          <div className="flex items-center justify-center gap-3">
+                          {/*<div className="flex items-center justify-center gap-3">
                             <button
                               type="button"
                               onClick={() => openEditForm(selectedOrder)}
@@ -1775,7 +1812,7 @@ export default function PurchaseOrderPage() {
                             >
                               Xóa
                             </button>
-                          </div>
+                          </div>*/}
                         </td>
                       </tr>
                     ))
@@ -2068,39 +2105,63 @@ export default function PurchaseOrderPage() {
                 <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
                   Trạng thái
                 </th>
+                {/*<th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
+                  Nhập kho
+                </th>*/}
                 <th className="px-6 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
                   Hành động
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {paginatedOrders.map((order) => (
-                <tr
-                  key={order.id}
-                  className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                >
-                  <td className="px-6 py-4 font-mono text-xs font-bold tracking-tight text-gray-900 dark:text-white">
-                    {order.code}
-                  </td>
-                  <td className="px-6 py-4 text-gray-700 dark:text-gray-200">
-                    {order.poNumber}
-                  </td>
-                  <td className="px-6 py-4 text-gray-700 dark:text-gray-200">
-                    {toVnDate(order.orderDate)}
-                  </td>
-                  <td className="px-6 py-4 text-gray-700 dark:text-gray-200">
-                    {order.supplierName || "-"}
-                  </td>
-                  <td className="px-6 py-4 font-semibold text-gray-900 dark:text-white">
-                    {order.totalAmount.toLocaleString("vi-VN")}₫
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`status-pill ${getStatusClass(order.status)}`}>
-                      {order.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-center gap-3">
+              {paginatedOrders.map((order) => {
+                const linkedImports = getLinkedImports(order);
+
+                return (
+                  <tr
+                    key={order.id}
+                    className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                  >
+                    <td className="px-6 py-4 font-mono text-xs font-bold tracking-tight text-gray-900 dark:text-white">
+                      {order.code}
+                    </td>
+                    <td className="px-6 py-4 text-gray-700 dark:text-gray-200">
+                      {order.poNumber}
+                    </td>
+                    <td className="px-6 py-4 text-gray-700 dark:text-gray-200">
+                      {toVnDate(order.orderDate)}
+                    </td>
+                    <td className="px-6 py-4 text-gray-700 dark:text-gray-200">
+                      {order.supplierName || "-"}
+                    </td>
+                    <td className="px-6 py-4 font-semibold text-gray-900 dark:text-white">
+                      {order.totalAmount.toLocaleString("vi-VN")}₫
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`status-pill ${getStatusClass(order.status)}`}>
+                        {order.status}
+                      </span>
+                    </td>
+                     {/*<td className="px-6 py-4">
+                     {linkedImports.length > 0 ? (
+                        <div className="flex flex-col gap-2">
+                          {linkedImports.map((imp) => (
+                            <div key={imp.id} className="text-xs">
+                              <span className="text-gray-700 dark:text-gray-300">
+                                Đơn {order.code} đang được nhập vào phiếu nhập{" "}
+                              </span>
+                              <span className="font-semibold text-blue-600 dark:text-blue-400">
+                                {imp.receiptNumber}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Chưa có phiếu nhập</span>
+                      )}
+                    </td>*/}
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-center gap-3">
                       <button
                         onClick={() => openDetailView(order)}
                         className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
@@ -2167,12 +2228,12 @@ export default function PurchaseOrderPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
-
+              );
+            })}
               {loading ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="px-6 py-8 text-center text-gray-500 dark:text-gray-400"
                   >
                     Đang tải...
@@ -2181,7 +2242,7 @@ export default function PurchaseOrderPage() {
               ) : paginatedOrders.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="px-6 py-8 text-center text-gray-500 dark:text-gray-400"
                   >
                     Không có dữ liệu

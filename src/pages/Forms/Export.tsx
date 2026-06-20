@@ -189,7 +189,9 @@ export default function XuatKho() {
   const fetchWarehouses = async () => {
     try {
       const data = await warehouseService.getAllWarehouses();
-      setAvailableWarehouses(data || []);
+      // Chỉ hiện các kho đang hoạt động
+      const activeWarehouses = (data || []).filter((w: any) => w.status === "Hoạt động");
+      setAvailableWarehouses(activeWarehouses);
     } catch (err) {
       console.error("Lỗi tải danh sách kho", err);
     }

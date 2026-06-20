@@ -17,6 +17,25 @@ const WAREHOUSE_TYPE_OPTIONS = [
   { value: 3, label: "Tài sản", description: "Kho tài sản - Dài hạn (Máy móc, thiết bị, bàn ghế, không xuất nhập thường xuyên)" },
 ] as const;
 
+const WAREHOUSE_STATUS_OPTIONS = [
+  { value: "Hoạt động", label: "🟢 Hoạt động"},
+  { value: "Bảo trì", label: "🟡 Bảo trì" },
+  { value: "Ngừng hoạt động", label: "🔴 Ngừng hoạt động" },
+] as const;
+
+const getWarehouseStatusColor = (status?: string) => {
+  switch (status) {
+    case "Hoạt động":
+      return "bg-emerald-50 text-emerald-700 shadow-[0_0_0_1px_rgba(16,185,129,0.2)] dark:bg-emerald-900/20 dark:text-emerald-300";
+    case "Bảo trì":
+      return "bg-amber-50 text-amber-700 shadow-[0_0_0_1px_rgba(217,119,6,0.2)] dark:bg-amber-900/20 dark:text-amber-300";
+    case "Ngừng hoạt động":
+      return "bg-rose-50 text-rose-700 shadow-[0_0_0_1px_rgba(225,29,72,0.2)] dark:bg-rose-900/20 dark:text-rose-300";
+    default:
+      return "bg-gray-50 text-gray-700 shadow-[0_0_0_1px_rgba(107,114,128,0.2)] dark:bg-gray-900/20 dark:text-gray-300";
+  }
+};
+
 const getWarehouseTypeLabel = (typeId?: number) => {
   return WAREHOUSE_TYPE_OPTIONS.find((option) => option.value === Number(typeId))?.label || "Unknown";
 };
@@ -70,6 +89,7 @@ export default function QuanLyKho() {
   const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(null);
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
   const [filters, setFilters] = useState<{ status: string[]; typeId: number[] }>({
     status: [],
     typeId: [],
@@ -253,6 +273,44 @@ export default function QuanLyKho() {
     setView("detail");
   };
 
+  const handleChangeWarehouseStatus = (newStatus: string) => {
+    if (!selectedWarehouse?.id) return;
+
+    showConfirm({
+      message: `Bạn có chắc chắn muốn thay đổi trạng thái thành "${newStatus}"?`,
+      okText: "Đồng ý",
+      cancelText: "Hủy",
+      onConfirm: async () => {
+        try {
+          await warehouseService.updateWarehouse(selectedWarehouse.id!, {
+            code: selectedWarehouse.code,
+            name: selectedWarehouse.name,
+            typeId: selectedWarehouse.typeId,
+            address: selectedWarehouse.address,
+            area: selectedWarehouse.area,
+            managerName: selectedWarehouse.managerName,
+            managerPhone: selectedWarehouse.managerPhone,
+            note: selectedWarehouse.note,
+            status: newStatus,
+          });
+          const updatedWarehouse = { ...selectedWarehouse, status: newStatus };
+          setSelectedWarehouse(updatedWarehouse);
+          setWarehouses(
+            warehouses.map((w) => (w.id === selectedWarehouse.id ? updatedWarehouse : w))
+          );
+          showToast(`Trạng thái kho đã được thay đổi thành "${newStatus}"!`, "success");
+        } catch (error: any) {
+          console.error(error);
+          let errorMsg = "Lỗi khi thay đổi trạng thái kho!";
+          if (error.response) {
+            errorMsg = `API Error: ${error.response.status}`;
+          }
+          showToast(errorMsg, "error");
+        }
+      },
+    });
+  };
+
   const resetForm = () => {
     setFormData({
       code: "",
@@ -266,6 +324,7 @@ export default function QuanLyKho() {
       status: "Hoạt động",
     });
     setSelectedWarehouse(null);
+    setIsStatusDropdownOpen(false);
   };
 
   const filteredWarehouses = warehouses.filter((warehouse) => {
@@ -577,13 +636,10 @@ export default function QuanLyKho() {
                       </span>
                     </td>
                     <td className="px-5 py-4">
-                    <span className={`status-pill ${
-                      warehouse.status === "Hoạt động"
-                        ? "bg-emerald-50 text-emerald-700 shadow-[0_0_0_1px_rgba(16,185,129,0.2)] dark:bg-emerald-900/20 dark:text-emerald-300"
-                        : "bg-rose-50 text-rose-700 shadow-[0_0_0_1px_rgba(225,29,72,0.2)] dark:bg-rose-900/20 dark:text-rose-300"
-                      }`}>
+                    <span className={`status-pill ${getWarehouseStatusColor(warehouse.status)}`}>
                         {warehouse.status || "Chưa xác định"}
                       </span>
+
                     </td>
                     <td className="px-5 py-4">
                       <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -768,23 +824,7 @@ export default function QuanLyKho() {
                   />
                 </div>
 
-                {view === "edit" && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Trạng Thái
-                  </label>
-                  <select
-                    name="status"
-                    value={formData.status}
-                    onChange={handleFormChange}
-                    className="w-full px-4 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all duration-200"
-                  >
-                    <option>Hoạt động</option>
-                    <option>Ngừng hoạt động</option>
-                    <option>Bảo trì</option>
-                  </select>
-                </div>
-                )}
+
 
                 <div className="md:col-span-2">
                   <FormTextarea
@@ -859,25 +899,73 @@ export default function QuanLyKho() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1 rounded-xl border border-indigo-100 bg-white/70 p-1 dark:border-indigo-500/20 dark:bg-gray-900/40">
-                  <button
-                    onClick={() => handleEditWarehouse(selectedWarehouse)}
-                    className="rounded-lg p-2 text-amber-600 transition-colors hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-500/20"
-                    title="Chỉnh sửa"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => selectedWarehouse.id && handleDeleteWarehouse(selectedWarehouse.id)}
-                    className="rounded-lg p-2 text-rose-600 transition-colors hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-500/20"
-                    title="Xóa"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
+                <div className="flex flex-col lg:flex-row items-start lg:items-center gap-2">
+                  {/* Status Change Button */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+                      className="relative inline-flex h-10 items-center gap-2 px-3 text-sm font-medium border rounded-lg shadow-sm transition-colors bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                      title="Thay đổi trạng thái"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      </svg>
+                      Đổi trạng thái
+                    </button>
+                    {/* Status Dropdown Menu */}
+                    {isStatusDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setIsStatusDropdownOpen(false)} />
+                        <div className="absolute left-0 top-full mt-2 w-60 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 overflow-hidden">
+                          <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white">Chọn trạng thái mới</p>
+                          </div>
+                          <div className="max-h-72 overflow-y-auto p-2 space-y-1">
+                            {WAREHOUSE_STATUS_OPTIONS.map((option) => (
+                              <button
+                                key={option.value}
+                                onClick={() => {
+                                  handleChangeWarehouseStatus(option.value);
+                                  setIsStatusDropdownOpen(false);
+                                }}
+                                disabled={selectedWarehouse.status === option.value}
+                                className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${
+                                  selectedWarehouse.status === option.value
+                                    ? "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed"
+                                    : "hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                                }`}
+                              >
+                                <p className="font-medium text-sm">{option.label}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1"></p>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Edit and Delete Buttons */}
+                  <div className="flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/40 p-1">
+                    <button
+                      onClick={() => handleEditWarehouse(selectedWarehouse)}
+                      className="rounded-lg p-2 text-amber-600 transition-colors hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-500/20"
+                      title="Chỉnh sửa"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => selectedWarehouse.id && handleDeleteWarehouse(selectedWarehouse.id)}
+                      className="rounded-lg p-2 text-rose-600 transition-colors hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-500/20"
+                      title="Xóa"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
 

@@ -261,7 +261,9 @@ export default function NhapKho() {
   const fetchWarehouses = async () => {
     try {
       const data = await warehouseService.getAllWarehouses();
-      setAvailableWarehouses(data || []);
+      // Chỉ hiện các kho đang hoạt động
+      const activeWarehouses = (data || []).filter((w: any) => w.status === "Hoạt động");
+      setAvailableWarehouses(activeWarehouses);
     } catch (err) {
       console.error("Lỗi tải danh sách kho", err);
     }
@@ -1886,20 +1888,6 @@ export default function NhapKho() {
               </div>
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
-                  Đơn Vị
-                </label>
-                <input
-                  type="text"
-                  value={materialInput.donVi}
-                  readOnly
-                  className="w-full cursor-not-allowed rounded-xl border border-gray-200 bg-gray-100 px-3 py-3 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-                  placeholder={
-                    materialInput.selectedMaterialId ? "" : "Chọn vật tư trước"
-                  }
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
                   Số Lượng
                 </label>
                 <input
@@ -1915,6 +1903,21 @@ export default function NhapKho() {
                   className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm text-gray-900 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                 />
               </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                  Đơn Vị
+                </label>
+                <input
+                  type="text"
+                  value={materialInput.donVi}
+                  readOnly
+                  className="w-full cursor-not-allowed rounded-xl border border-gray-200 bg-gray-100 px-3 py-3 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                  placeholder={
+                    materialInput.selectedMaterialId ? "" : "Chọn vật tư trước"
+                  }
+                />
+              </div>
+              
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
                   Đơn Giá

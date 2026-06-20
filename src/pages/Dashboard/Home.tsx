@@ -287,7 +287,7 @@ export default function Home() {
   const importVal = useMemo(() => importsM.reduce((s, r) => s + (r.totalAmount || 0), 0), [importsM]);
   const exportVal = useMemo(() => exportsM.reduce((s, r) => s + (r.totalAmount || 0), 0), [exportsM]);
 
-  const pendingPOs = useMemo(() => purchaseOrders.filter((p) => { const s = (p.status || "").toLowerCase(); return s === "chờ duyệt" || s === "pending"; }), [purchaseOrders]);
+  const pendingPOs = useMemo(() => purchaseOrders.filter((p) => { const s = (p.status || "").toLowerCase(); return s === "chờ xác nhận" || s === "pending"; }), [purchaseOrders]);
   const pendingSC  = useMemo(() => stockChecks.filter((s) => s.status === "Đã trình"), [stockChecks]);
 
   // 6-month series
@@ -387,7 +387,7 @@ export default function Home() {
             iconBg="bg-cyan-50 dark:bg-cyan-900/30"
             label="Nguyên liệu"
             value={materials.length}
-            sub={`${materials.filter(m => qty(m.id) > 0).length} còn hàng · ${stockSegs.empty} hết hàng`}
+            sub={`${materials.filter(m => qty(m.id) > 0).length} còn hàng`}
             onClick={() => navigate("/quan-ly-nguyen-lieu")}
           />
           <StatCard
@@ -395,7 +395,7 @@ export default function Home() {
             iconBg="bg-rose-50 dark:bg-rose-900/30"
             label="Tồn kho thấp"
             value={lowStock.length}
-            sub={`${lowStock.filter(m => m.stock <= 0).length} hết hàng · ${lowStock.filter(m => m.stock > 0).length} sắp thiếu`}
+            sub={`${lowStock.filter(m => m.stock <= 0).length} hết hàng · ${lowStock.filter(m => m.stock > 0).length} sắp hết hàng`}
             badge={lowStock.filter(m => m.stock <= 0).length > 0 ? { text: "Cần xử lý", color: "bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-400" } : undefined}
             onClick={() => navigate("/quan-ly-nguyen-lieu")}
           />
@@ -405,7 +405,7 @@ export default function Home() {
             label="Nhập tháng này"
             value={importsM.length}
             sub={`Tổng ${fmtMoney(importVal)}đ`}
-            badge={importsPrev > 0 ? { text: `${importsM.length >= importsPrev ? "+" : ""}${importsM.length - importsPrev} so T-1`, color: importsM.length >= importsPrev ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-rose-50 text-rose-500 dark:bg-rose-900/30 dark:text-rose-400" } : undefined}
+            badge={importsPrev > 0 ? { text: `${importsM.length >= importsPrev ? "+" : ""}`, color: importsM.length >= importsPrev ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-rose-50 text-rose-500 dark:bg-rose-900/30 dark:text-rose-400" } : undefined}
             onClick={() => navigate("/nhap-kho")}
           />
           <StatCard
