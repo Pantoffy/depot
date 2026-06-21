@@ -15,6 +15,14 @@ TailAdmin provides essential UI components and layouts for building feature-rich
 - TypeScript
 - Tailwind CSS
 
+## Lời mở đầu (Báo cáo đồ án tốt nghiệp)
+
+Trong bối cảnh chuyển đổi số tại doanh nghiệp, việc quản lý kho hàng bằng phương pháp thủ công dễ phát sinh sai sót, chậm cập nhật dữ liệu và khó kiểm soát tồn kho theo thời gian thực. Vì vậy, đề tài **Hệ thống Quản lý Kho hàng (Warehouse Management System)** được thực hiện nhằm xây dựng một giải pháp hỗ trợ số hóa toàn bộ quy trình nhập - xuất - tồn, nâng cao hiệu quả vận hành và chất lượng ra quyết định.
+
+Hệ thống tập trung phục vụ hai tác nhân chính: **Nhân viên kho** và **Quản lý kho**. Nhân viên kho thực hiện các nghiệp vụ hằng ngày như lập phiếu nhập, phiếu xuất, theo dõi số lượng vật tư và cập nhật dữ liệu phát sinh. Quản lý kho chịu trách nhiệm theo dõi tổng quan hoạt động kho, kiểm soát trạng thái tồn kho, phê duyệt nghiệp vụ và tổ chức kiểm kê định kỳ.
+
+Đồ án hướng đến mục tiêu hình thành một nền tảng quản lý kho trực quan, chính xác và dễ mở rộng, góp phần giảm thất thoát, tối ưu nguồn lực và hỗ trợ doanh nghiệp chuẩn hóa quy trình quản trị kho hàng trong thực tế.
+
 ### Quick Links
 - [✨ Visit Website](https://tailadmin.com)
 - [📄 Documentation](https://tailadmin.com/docs)
